@@ -23,6 +23,7 @@ function rec.newV(pos, size) return rl.new("Rectangle", pos.x, pos.y, size.x, si
 
 function lt(a, b) return a < b end
 function gt(a, b) return a > b end
+function sign(x) return x < 0 and -1 or x > 0 and 1 or 0 end
 
 function findf(t, x, comp)
     for _, v in pairs(t) do
@@ -95,10 +96,14 @@ function p2t(p)
     return vec.floor(p / TILE_SIZE) + vec.v2(1, 1)
 end
 
+function t2p(t)
+    return (t - vec.v2(1, 1)) * TILE_SIZE
+end
+
 local player = {
     pos = vec.v2(SCREEN_WIDTH * TILE_SIZE / 2, SCREEN_HEIGHT * TILE_SIZE / 2) - vec.v2(8, 0),
     draw_size = vec.v2(TILE_SIZE, TILE_SIZE * 2),
-    hitbox = vec.v2(TILE_SIZE, TILE_SIZE * 2),
+    hitbox = { vec.v2(2, 0), vec.v2(12, 32) }
     vel = vec.v2(0, 0),
     on_ground = false,
 }
@@ -157,29 +162,35 @@ while not rl.WindowShouldClose() do
     tprint("decel = " .. tostring(decel))
 
     -- collision with ground
+    local move_hor = sign(player.pos.x - old_pos.x)
+    local move_ver = sign(player.pos.y - old_pos.y)
+    local aabb = map(function (v) return v + player.pos end, player.hitbox)
+
     function get_collided_tiles(points, dim, op)
         local ts = {}
         for _, p in ipairs(points) do
             local t = p2t(p)
             if not findf(ts, t) and tilemap[t.y] ~= nil
                and tilemap[t.y][t.x] ~= nil and tilemap[t.y][t.x] ~= 0 then
-                table.insert(ts, t)
+                local p = t2p(t)
+                table.insert(ts, p)
+                table.insert(ts, p + vec.v2(TILE_SIZE-1, TILE_SIZE-1))
             end
         end
         table.sort(ts, function (a, b) return op(dim(a), dim(b)) end)
-        return ts
+        return #ts > 0 and ts[1] or nil
     end
 
-    local ground_tiles = get_collided_tiles({
+    local ground_tile = get_collided_tiles({
         player.pos + vec.v2(0, 2) * TILE_SIZE + vec.v2( 3, 0),
         player.pos + vec.v2(1, 2) * TILE_SIZE + vec.v2(-4, 0),
     }, vec.y, lt)
 
     player.on_ground = false
-    if #ground_tiles > 0 then
-        tprint("on ground, tile y = " .. tostring(ground_tiles[1].y * TILE_SIZE))
+    if ground_tile ~= nil then
+        tprint("on ground, tile y = " .. tostring(ground_tile.y))
         player.vel.y = 0
-        player.pos.y = (ground_tiles[1].y - 1) * TILE_SIZE - player.hitbox.y
+        player.pos.y = ground_tile.y - player.hitbox.y
         player.on_ground = true
     end
 
@@ -187,18 +198,18 @@ while not rl.WindowShouldClose() do
         player.pos + vec.v2(1, 0) * TILE_SIZE + vec.v2( 1, 0),
         player.pos + vec.v2(1, 1) * TILE_SIZE + vec.v2( 1, 0),
     }, vec.x, lt)
-    if #right_wall > 0 then
+    if right_wall ~= nil then
         player.vel.x = 0
-        player.pos.x = (right_wall[1].x - 1) * TILE_SIZE - player.hitbox.x
+        player.pos.x = right_wall.x - player.hitbox.x
     end
 
     local left_wall = get_collided_tiles({
         player.pos + vec.v2(0, 0) * TILE_SIZE + vec.v2(-1, 0),
         player.pos + vec.v2(0, 1) * TILE_SIZE + vec.v2(-1, 0),
     }, vec.x, lt)
-    if #left_wall > 0 then
+    if left_wall ~= nil then
         player.vel.x = 0
-        player.pos.x = (left_wall[1].x) * TILE_SIZE
+        player.pos.x = left_wall.x + TILE_SIZE
     end
 
     camera.target = player.pos
@@ -208,7 +219,7 @@ while not rl.WindowShouldClose() do
     for y = 1, SCREEN_HEIGHT do
         for x = 1, SCREEN_WIDTH do
             if tilemap[y][x] ~= 0 then
-                if findf(ground_tiles, vec.v2(x, y), vec.eq) then
+                if ground_tile ~= nil and vec.eq(ground_tile, vec.v2(x, y)) then
                     rl.DrawRectangleV(vec.v2(x-1, y-1) * TILE_SIZE, vec.v2(TILE_SIZE, TILE_SIZE), rl.RED)
                 else
                     rl.DrawRectangleV(vec.v2(x-1, y-1) * TILE_SIZE, vec.v2(TILE_SIZE, TILE_SIZE), rl.WHITE)
