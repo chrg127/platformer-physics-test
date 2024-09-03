@@ -70,6 +70,7 @@ local buffer = rl.LoadRenderTexture(SCREEN_WIDTH * TILE_SIZE, SCREEN_HEIGHT * TI
 local camera = rl.new("Camera2D", vec.v2(SCREEN_WIDTH * TILE_SIZE / 2, SCREEN_HEIGHT * TILE_SIZE / 2), vec.v2(0, 0), 0, 1)
 
 local tilemap = {
+    { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
     { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
     { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
     { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
@@ -79,15 +80,14 @@ local tilemap = {
     { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
     { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
     { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-    { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-    { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+    { 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
     { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
     { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
     { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
     { 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
     { 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
     { 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0 },
-    { 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 1, 0, 1, 0, 1 },
+    { 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 1, 0, 1, 0, 1 },
     { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0 },
     { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
 }
@@ -103,7 +103,7 @@ end
 local player = {
     pos = vec.v2(SCREEN_WIDTH * TILE_SIZE / 2, SCREEN_HEIGHT * TILE_SIZE / 2) - vec.v2(8, 0),
     draw_size = vec.v2(TILE_SIZE, TILE_SIZE * 2),
-    hitbox = { vec.v2(2, 0), vec.v2(12, 32) }
+    hitbox = { vec.v2(2, 0), vec.v2(14, 32) },
     vel = vec.v2(0, 0),
     on_ground = false,
 }
@@ -150,12 +150,17 @@ while not rl.WindowShouldClose() do
 
     local old_pos = player.pos
     player.pos = player.pos + player.vel * dt
+    -- player.pos = player.pos + vec.v2(
+    --     rl.IsKeyDown(rl.KEY_LEFT) and -1 or rl.IsKeyDown(rl.KEY_RIGHT) and 1 or 0,
+    --     rl.IsKeyDown(rl.KEY_UP)   and -1 or rl.IsKeyDown(rl.KEY_DOWN)  and 1 or 0
+    -- ) * 4
 
 	rl.BeginDrawing()
 
     rl.BeginTextureMode(buffer)
 	rl.ClearBackground(rl.BLACK)
 
+    tprint("oldpos= " .. tostring(old_pos))
     tprint("pos   = " .. tostring(player.pos))
     tprint("vel   = " .. tostring(player.vel))
     tprint("accel = " .. tostring(accel))
@@ -164,14 +169,19 @@ while not rl.WindowShouldClose() do
     -- collision with ground
     local move_hor = sign(player.pos.x - old_pos.x)
     local move_ver = sign(player.pos.y - old_pos.y)
-    local aabb = map(function (v) return v + player.pos end, player.hitbox)
+    local aabb = map(function (_, v) return v + player.pos end, player.hitbox)
+    tprint(fmt.tostring("aabb =", aabb))
 
-    function get_collided_tiles(points, dim, op)
+    function get_collided_tiles(points, move, dim)
+        if move == 0 then
+            return nil
+        end
+        local op = move == 1 and lt or gt
         local ts = {}
         for _, p in ipairs(points) do
             local t = p2t(p)
-            if not findf(ts, t) and tilemap[t.y] ~= nil
-               and tilemap[t.y][t.x] ~= nil and tilemap[t.y][t.x] ~= 0 then
+            if  tilemap[t.y] ~= nil and tilemap[t.y][t.x] ~= nil
+            and tilemap[t.y][t.x] ~= 0 then
                 local p = t2p(t)
                 table.insert(ts, p)
                 table.insert(ts, p + vec.v2(TILE_SIZE-1, TILE_SIZE-1))
@@ -181,36 +191,78 @@ while not rl.WindowShouldClose() do
         return #ts > 0 and ts[1] or nil
     end
 
-    local ground_tile = get_collided_tiles({
-        player.pos + vec.v2(0, 2) * TILE_SIZE + vec.v2( 3, 0),
-        player.pos + vec.v2(1, 2) * TILE_SIZE + vec.v2(-4, 0),
-    }, vec.y, lt)
+    local ytile = get_collided_tiles({
+        aabb[1] + vec.v2(0, -1),
+        aabb[1] + vec.v2(aabb[2].x - aabb[1].x, -1),
+        aabb[2] + vec.v2(aabb[1].x - aabb[2].x, 0),
+        aabb[2],
+        -- aabb[1] + vec.v2(0, 16),
+        -- aabb[2] + vec.v2(0, -16)
+    }, move_ver, vec.y)
 
     player.on_ground = false
-    if ground_tile ~= nil then
-        tprint("on ground, tile y = " .. tostring(ground_tile.y))
+    if ytile ~= nil then
+        tprint(fmt.tostring("move_ver =", move_ver))
+        tprint(fmt.tostring("ytile =", ytile))
         player.vel.y = 0
-        player.pos.y = ground_tile.y - player.hitbox.y
-        player.on_ground = true
+        if move_ver == 1 then
+            player.pos.y = ytile.y - (aabb[2].y - aabb[1].y)
+        elseif move_ver == -1 then
+            player.pos.y = ytile.y + 2
+        end
+        player.on_ground = move_ver == 1
     end
 
-    local right_wall = get_collided_tiles({
-        player.pos + vec.v2(1, 0) * TILE_SIZE + vec.v2( 1, 0),
-        player.pos + vec.v2(1, 1) * TILE_SIZE + vec.v2( 1, 0),
-    }, vec.x, lt)
-    if right_wall ~= nil then
+    tprint("pos (adjusted) = " .. tostring(player.pos))
+
+    local xtile = get_collided_tiles({
+        -- aabb[1],
+        -- aabb[1] + vec.v2(aabb[2].x - aabb[1].x, 0),
+        -- aabb[2] + vec.v2(aabb[1].x - aabb[2].x, 0),
+        -- aabb[2],
+        aabb[1] + vec.v2(0, 16),
+        aabb[2] + vec.v2(0, -16)
+    }, move_hor, vec.x)
+
+    if xtile ~= nil then
+        tprint(fmt.tostring("xtile =", xtile))
         player.vel.x = 0
-        player.pos.x = right_wall.x - player.hitbox.x
+        if move_hor == 1 then
+            player.pos.x = xtile.x - 16
+        elseif move_hor == -1 then
+            player.pos.x = xtile.x
+        end
     end
 
-    local left_wall = get_collided_tiles({
-        player.pos + vec.v2(0, 0) * TILE_SIZE + vec.v2(-1, 0),
-        player.pos + vec.v2(0, 1) * TILE_SIZE + vec.v2(-1, 0),
-    }, vec.x, lt)
-    if left_wall ~= nil then
-        player.vel.x = 0
-        player.pos.x = left_wall.x + TILE_SIZE
-    end
+    -- local ground_tile = get_collided_tiles({
+    --     player.pos + vec.v2(0, 2) * TILE_SIZE + vec.v2( 3, 0),
+    --     player.pos + vec.v2(1, 2) * TILE_SIZE + vec.v2(-4, 0),
+    -- }, vec.y, lt)
+
+    -- if ground_tile ~= nil then
+    --     tprint("on ground, tile y = " .. tostring(ground_tile.y))
+    --     player.vel.y = 0
+    --     player.pos.y = ground_tile.y - player.hitbox.y
+    --     player.on_ground = true
+    -- end
+
+    -- local right_wall = get_collided_tiles({
+    --     player.pos + vec.v2(1, 0) * TILE_SIZE + vec.v2( 1, 0),
+    --     player.pos + vec.v2(1, 1) * TILE_SIZE + vec.v2( 1, 0),
+    -- }, vec.x, lt)
+    -- if right_wall ~= nil then
+    --     player.vel.x = 0
+    --     player.pos.x = right_wall.x - player.hitbox.x
+    -- end
+
+    -- local left_wall = get_collided_tiles({
+    --     player.pos + vec.v2(0, 0) * TILE_SIZE + vec.v2(-1, 0),
+    --     player.pos + vec.v2(0, 1) * TILE_SIZE + vec.v2(-1, 0),
+    -- }, vec.x, lt)
+    -- if left_wall ~= nil then
+    --     player.vel.x = 0
+    --     player.pos.x = left_wall.x + TILE_SIZE
+    -- end
 
     camera.target = player.pos
 
