@@ -378,9 +378,9 @@ function fmt.format(fmtstr, ...)
             return args[pos]
         else
             n = n + 1
-            if n-1 > #args then
-                error("not enough arguments")
-            end
+            -- if n-1 > #args then
+            --     error("not enough arguments, n = " .. tostring(n))
+            -- end
             return args[n-1]
         end
     end
