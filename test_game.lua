@@ -57,6 +57,32 @@ function filter(pred, t)
     return r
 end
 
+function foldl(fn, init, t)
+    local r = init
+    for k, v in pairs(t) do
+        r = fn(k, v, r)
+    end
+    return r
+end
+
+function minf(fn, t)
+    return foldl(function (k, v, r) return math.min(fn(v), r) end, math.huge, t)
+end
+
+function maxf(fn, t)
+    return foldl(function (k, v, r) return math.max(fn(v), r) end, -math.huge, t)
+end
+
+function identity(x) return x end
+
+function rlerp(a, b, v)
+    return (v - a) / (b - a)
+end
+
+function lerp(a, b, t)
+    return a + t*(b - a)
+end
+
 -- our game uses 16x16 tiles
 local TILE_SIZE = 16
 -- a screen will always be 20x16 tiles
@@ -64,7 +90,7 @@ local TILE_SIZE = 16
 local SCREEN_WIDTH = 25
 local SCREEN_HEIGHT = 20
 -- scale window up to this number
-local SCALE = 1
+local SCALE = 2
 
 rl.SetConfigFlags(rl.FLAG_VSYNC_HINT)
 rl.InitWindow(SCREEN_WIDTH * TILE_SIZE * SCALE, SCREEN_HEIGHT * TILE_SIZE * SCALE, "witch game")
@@ -183,63 +209,100 @@ while not rl.WindowShouldClose() do
         end
     }
 
-    function get_min_collided_tile(points, move, dim)
-        local ops = {gt, lt}
-        local op = ops[move+1]
-        local ts = {}
-        for _, p in ipairs(points[move+1]) do
-            local t = p2t(p)
-            if  tilemap[t.y] ~= nil and tilemap[t.y][t.x] ~= nil
-            and tilemap[t.y][t.x] ~= 0 then
-                local p = t2p(t)
-                table.insert(ts, p)
-                table.insert(ts, p + vec.v2(TILE_SIZE-1, TILE_SIZE-1))
-            end
-        end
-        table.sort(ts, function (a, b) return op(dim(a), dim(b)) end)
-        return #ts > 0 and ts[1] or nil
-    end
-
     local aabb = map(function (_, v) return v + player.pos end, player.hitbox)
     tprint(fmt.tostring("aabb =", aabb))
-    local points = {
-        {
-            {
-                aabb[1]                      + vec.v2( 0,  8), -- top left
-                aabb[1]                      + vec.v2( 0, 16), -- middle left
-                vec.v2(aabb[1].x, aabb[2].y) + vec.v2( 0, -8), -- bottom left
-            }, {
-                vec.v2(aabb[2].x, aabb[1].y) + vec.v2( 0,  8), -- top right
-                aabb[2]                      + vec.v2( 0,-16), -- middle right
-                aabb[2]                      + vec.v2( 0, -8), -- bottom right
-            }
-        }, {
-            {
-                aabb[1]                      + vec.v2( 1,  0), -- top left
-                vec.v2(aabb[2].x, aabb[1].y) + vec.v2(-1,  0), -- top right
-            }, {
-                vec.v2(aabb[1].x, aabb[2].y) + vec.v2( 1,  0), -- bottom left
-                aabb[2]                      + vec.v2(-1,  0), -- bottom right
-            }
-        }
-    }
 
-    for d = 1, 0, -1 do
-        local dim = d == 0 and vec.x or vec.y
-        for dir = 0, 1 do
-            local move = dir == 1 and 1 or 0
-            local tile = get_min_collided_tile(points[d+1], move, dim)
-            if tile ~= nil then
-                tprint(fmt.tostring("(d = ", d, ") move =", move))
-                tprint(fmt.tostring("(d = ", d, ") tile =", tile))
-                player.vel = vec.set_dim(player.vel, d, 0)
-                local diff = { 1, dim(aabb[1]) - dim(aabb[2]) }
-                player.pos = vec.set_dim(player.pos, d, dim(tile) + diff[move+1] - dim(player.hitbox[1]))
-                callbacks[d * 2 + move + 1]()
+    -- function get_min_collided_tile(points, move, dim)
+    --     local ts = {}
+    --     for _, p in ipairs(points[move+1]) do
+    --         local t = p2t(p)
+    --         if  tilemap[t.y] ~= nil and tilemap[t.y][t.x] ~= nil
+    --         and tilemap[t.y][t.x] ~= 0 then
+    --             local p = t2p(t)
+    --             table.insert(ts, p)
+    --             table.insert(ts, p + vec.v2(TILE_SIZE-1, TILE_SIZE-1))
+    --         end
+    --     end
+    --     local ops = {maxf, minf}
+    --     return ops[move+1](dim, ts)
+    -- end
+
+    -- local points = {
+    --     {
+    --         {
+    --             aabb[1]                      + vec.v2( 0,  8), -- top left
+    --             aabb[1]                      + vec.v2( 0, 16), -- middle left
+    --             vec.v2(aabb[1].x, aabb[2].y) + vec.v2( 0, -8), -- bottom left
+    --         }, {
+    --             vec.v2(aabb[2].x, aabb[1].y) + vec.v2( 0,  8), -- top right
+    --             aabb[2]                      + vec.v2( 0,-16), -- middle right
+    --             aabb[2]                      + vec.v2( 0, -8), -- bottom right
+    --         }
+    --     }, {
+    --         {
+    --             aabb[1]                      + vec.v2( 1,  0), -- top left
+    --             vec.v2(aabb[2].x, aabb[1].y) + vec.v2(-1,  0), -- top right
+    --         }, {
+    --             vec.v2(aabb[1].x, aabb[2].y) + vec.v2( 1,  0), -- bottom left
+    --             aabb[2]                      + vec.v2(-1,  0), -- bottom right
+    --         }
+    --     }
+    -- }
+
+    -- for d = 1, 0, -1 do
+    --     local dim = d == 0 and vec.x or vec.y
+    --     for dir = 0, 1 do
+    --         local move = dir == 1 and 1 or 0
+    --         local tile = get_min_collided_tile(points[d+1], move, dim)
+    --         if math.abs(tile) ~= math.huge then
+    --             tprint(fmt.tostring("(d = ", d, ") move =", move))
+    --             tprint(fmt.tostring("(d = ", d, ") tile =", tile))
+    --             player.vel = vec.set_dim(player.vel, d, 0)
+    --             local diff = { 1, dim(aabb[1]) - dim(aabb[2]) }
+    --             player.pos = vec.set_dim(player.pos, d, tile + diff[move+1] - dim(player.hitbox[1]))
+    --             callbacks[d * 2 + move + 1]()
+    --         end
+    --     end
+    -- end
+
+    local aabb_old = map(function (_, v) return v + old_pos end, player.hitbox)
+    local tiles = {}
+    local start = p2t(aabb[1])
+    local endd  = p2t(aabb[2])
+    for y = start.y, endd.y do
+        for x = start.x, endd.x do
+            if  tilemap[y] ~= nil and tilemap[y][x] ~= nil
+            and tilemap[y][x] ~= 0 then
+                table.insert(tiles, t2p(vec.v2(x, y)))
             end
         end
     end
 
+    if #tiles > 0 then
+        local ymove = sign(player.pos.y - old_pos.y)
+        local xmove = sign(player.pos.x - old_pos.x)
+        local whatever = function () return 100000 end
+        local ops = { maxf, whatever, minf }
+        local opx = ops[xmove+2]
+        local opy = ops[ymove+2]
+        local x = opx(vec.x, tiles)
+        local y = opy(vec.y, tiles)
+        tprint("x = {}, y = {}", x, y)
+        local px = xmove == 1 and 2 or 1
+        local py = ymove == 1 and 2 or 1
+        local tx = rlerp(aabb_old[px].x, aabb[px].x, x)
+        local ty = rlerp(aabb_old[py].y, aabb[py].y, y)
+        local t = math.min(tx, ty)
+        tprint(fmt.format("t = {}", t))
+        local new_x = lerp(aabb_old[px].x, aabb[px].x, t)
+        local new_y = lerp(aabb_old[py].y, aabb[py].y, t)
+        player.pos.x = new_x - (xmove == 1 and 16 or 0)
+        player.pos.y = new_y - (ymove == 1 and 32 or 0)
+        player.vel.x = 0
+        player.vel.y = 0
+    end
+
+    player.on_ground = true
     tprint("pos (adjusted) = " .. tostring(player.pos))
 
     camera.target = player.pos
