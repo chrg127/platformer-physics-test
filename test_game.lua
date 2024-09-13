@@ -152,6 +152,9 @@ local player = {
     hitbox = { vec.v2(0, 0), vec.v2(TILE_SIZE-0, TILE_SIZE*2) },
     vel = vec.v2(0, 0),
     on_ground = false,
+    old_on_ground = false,
+    coyote_time = 0,
+    jump_buf = false,
     collision_points = {
         {
             { vec.v2(  0,  8), vec.v2(  0, 16), vec.v2(  0, 24), }, --left
@@ -161,7 +164,6 @@ local player = {
             { vec.v2(-12,  0), vec.v2( -4,  0), }  -- bottom
         }
     },
-    
 }
 
 local logfile = io.open("log.txt", "w")
@@ -169,24 +171,27 @@ local logfile = io.open("log.txt", "w")
 while not rl.WindowShouldClose() do
     local dt = rl.GetFrameTime()
 
-    cur_line = 15
+    local cur_line = 5
+    local lines_to_print = {}
     function tprint(s)
-        rl.DrawText(s, 5, cur_line, 10, rl.GREEN)
+        table.insert(lines_to_print, { s, cur_line })
         cur_line = cur_line + 10
         logfile:write(s .. "\n")
     end
 
-    tprint("new frame")
+    tprint(tostring(rl.GetFPS()) .. " FPS")
 
     -- physics
     local ACCEL = 700
     local DECEL = 300
     local VEL_CAP = 14 * TILE_SIZE
     local GRAVITY = 400
+    local SLOW_GRAVITY = 300 -- used when pressing the jump button while falling
     local JUMP_HEIGHT_MAX = 4.5 -- tiles
     local JUMP_HEIGHT_MIN = 0.2 -- tiles
+    local COYOTE_TIME_FRAMES = 10
 
-    local JUMP_VEL = -math.sqrt(2 * GRAVITY * (JUMP_HEIGHT_MAX * TILE_SIZE))
+    local JUMP_VEL     = -math.sqrt(2 * GRAVITY * (JUMP_HEIGHT_MAX * TILE_SIZE))
     local JUMP_VEL_MIN = -math.sqrt(2 * GRAVITY * (JUMP_HEIGHT_MIN * TILE_SIZE))
 
     local accel_hor = (rl.IsKeyDown(rl.KEY_LEFT)  and -ACCEL or 0)
@@ -194,7 +199,9 @@ while not rl.WindowShouldClose() do
     local decel_hor = player.vel.x > 0 and -DECEL
                    or player.vel.x < 0 and  DECEL
                    or 0
-    local accel = vec.v2(accel_hor + decel_hor, GRAVITY)
+    local gravity = rl.IsKeyDown(rl.KEY_Z) and not player.on_ground and player.vel.y > 0
+                and SLOW_GRAVITY or GRAVITY
+    local accel = vec.v2(accel_hor + decel_hor, gravity)
 
     local old_vel = player.vel
     player.vel = player.vel + accel * dt
@@ -203,13 +210,17 @@ while not rl.WindowShouldClose() do
         player.vel.x = 0
     end
 
-    if rl.IsKeyPressed(rl.KEY_Z) and player.on_ground then
+    if  (rl.IsKeyPressed(rl.KEY_Z) or player.jump_buf)
+    and (player.on_ground or player.coyote_time > 0) then
         player.vel.y = JUMP_VEL
+        player.jump_buf = false
     end
+    player.coyote_time = (player.old_on_ground and not player.on_ground and player.vel.y > 0) and COYOTE_TIME_FRAMES
+                      or (player.on_ground) and 0
+                      or math.max(0, player.coyote_time - 1)
 
-    if not rl.IsKeyDown(rl.KEY_Z)
-        and not player.on_ground
-        and player.vel.y < JUMP_VEL_MIN then
+    if not rl.IsKeyDown(rl.KEY_Z) and not player.on_ground
+       and player.vel.y < JUMP_VEL_MIN then
         player.vel.y = JUMP_VEL_MIN
     end
 
@@ -223,17 +234,14 @@ while not rl.WindowShouldClose() do
         ) * 4
     end
 
-	rl.BeginDrawing()
-
-    rl.BeginTextureMode(buffer)
-	rl.ClearBackground(rl.BLACK)
-
-    tprint("oldpos= " .. tostring(old_pos))
-    tprint("pos   = " .. tostring(player.pos))
-    tprint("vel   = " .. tostring(player.vel))
-    tprint("accel = " .. tostring(accel))
+    tprint("oldpos = " .. tostring(old_pos))
+    tprint("pos    = " .. tostring(player.pos))
+    tprint("vel    = " .. tostring(player.vel))
+    tprint("accel  = " .. tostring(accel))
+    tprint("coyote = " .. tostring(player.coyote_time))
 
     -- collision with ground
+    player.old_on_ground = player.on_ground
     player.on_ground = false
     local callbacks = {
         function () tprint("pushing left") end,
@@ -290,7 +298,25 @@ while not rl.WindowShouldClose() do
 
     tprint("pos (adjusted) = " .. tostring(player.pos))
 
+    -- do jump buffering here since we've got points calculated...
+    -- and #filter(function (_, v) return not is_air(v) end,
+    --          map(function (_, v) return p2t(v + vec.v2(0, 10)) end,
+    --              points[2][2])) > 0 then
+    if rl.IsKeyPressed(rl.KEY_Z) and not player.on_ground and player.vel.y > 0 then
+        for _, p in ipairs(points[2][2]) do
+            if not is_air(p2t(p + vec.v2(0, 12))) then
+                player.jump_buf = true
+            end
+        end
+    end
+
+    tprint("jump buf = " .. tostring(player.jump_buf))
+
     camera.target = player.pos
+
+    rl.BeginDrawing()
+    rl.BeginTextureMode(buffer)
+    rl.ClearBackground(rl.BLACK)
 
     rl.BeginMode2D(camera)
 
@@ -317,6 +343,11 @@ while not rl.WindowShouldClose() do
     rl.DrawRectangleLinesEx(rec.newV(player.pos, player.draw_size), 1.0, rl.RED)
 
     rl.EndMode2D()
+
+    for _, line in ipairs(lines_to_print) do
+        rl.DrawText(line[1], 5, line[2], 10, rl.GREEN)
+    end
+
     rl.EndTextureMode()
 
     rl.DrawTexturePro(
@@ -327,7 +358,6 @@ while not rl.WindowShouldClose() do
         rl.WHITE
     )
 
-    rl.DrawFPS(10, 10)
 	rl.EndDrawing()
 end
 
