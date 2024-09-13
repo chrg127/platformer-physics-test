@@ -88,6 +88,10 @@ function aabb_point_inside(aabb, p)
     return rl.CheckCollisionPointRec(p, rec.newV(aabb[1], aabb[2] - aabb[1]))
 end
 
+function clamp(x, min, max)
+    return math.min(math.max(x, min), max)
+end
+
 -- our game uses 16x16 tiles
 local TILE_SIZE = 16
 -- a screen will always be 20x16 tiles
@@ -101,7 +105,7 @@ local FREE_MOVEMENT = false
 
 rl.SetConfigFlags(rl.FLAG_VSYNC_HINT)
 rl.InitWindow(SCREEN_WIDTH * TILE_SIZE * SCALE, SCREEN_HEIGHT * TILE_SIZE * SCALE, "witch game")
-rl.SetTargetFPS(60)
+rl.SetTargetFPS(30)
 
 local buffer = rl.LoadRenderTexture(SCREEN_WIDTH * TILE_SIZE, SCREEN_HEIGHT * TILE_SIZE)
 
@@ -118,13 +122,13 @@ local tilemap = {
     { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
     { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
     { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-    { 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-    { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-    { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-    { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-    { 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+    { 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+    { 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+    { 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+    { 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+    { 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
     { 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-    { 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0 },
+    { 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0 },
     { 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 0, 1, 0, 1, 0, 1 },
     { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0 },
     { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
@@ -156,7 +160,8 @@ local player = {
             { vec.v2(  4,  0), vec.v2( 12,  0), }, -- top
             { vec.v2(-12,  0), vec.v2( -4,  0), }  -- bottom
         }
-    }
+    },
+    
 }
 
 local logfile = io.open("log.txt", "w")
@@ -176,30 +181,31 @@ while not rl.WindowShouldClose() do
     -- physics
     local DECEL = 200
     local ACCEL = 700
-    local VEL_CAP = 200
+    local VEL_CAP = 14 * TILE_SIZE
     local GRAVITY = 400
+    local JUMP_HEIGHT = 4 -- tiles
+    local JUMP_VEL = -math.sqrt(2 * GRAVITY * (JUMP_HEIGHT * TILE_SIZE))
 
-    local accel = vec.v2(
-        (rl.IsKeyDown(rl.KEY_LEFT)  and -ACCEL or 0)
-      + (rl.IsKeyDown(rl.KEY_RIGHT) and  ACCEL or 0),
-        ((rl.IsKeyPressed(rl.KEY_Z) and player.on_ground) and -15000 or 0)
-    )
-
-    local decel = player.vel.x > 0 and -DECEL
-               or player.vel.x < 0 and  DECEL
-               or 0
-
-    local gravity = vec.v2(0, GRAVITY)
+    local accel_hor = (rl.IsKeyDown(rl.KEY_LEFT)  and -ACCEL or 0)
+                    + (rl.IsKeyDown(rl.KEY_RIGHT) and  ACCEL or 0)
+    local decel_hor = player.vel.x > 0 and -DECEL
+                   or player.vel.x < 0 and  DECEL
+                   or 0
+    local accel = vec.v2(accel_hor + decel_hor, GRAVITY)
 
     local old_vel = player.vel
-    player.vel = player.vel + (accel + vec.v2(decel, 0) + gravity) * dt
-    if player.vel.x > VEL_CAP then
-        player.vel.x = VEL_CAP
-    elseif player.vel.x < -VEL_CAP then
-        player.vel.x = -VEL_CAP
-    end
+    player.vel = player.vel + accel * dt
+    player.vel.x = clamp(player.vel.x, -VEL_CAP, VEL_CAP)
     if math.abs(player.vel.x) < 1 then
         player.vel.x = 0
+    end
+
+    if rl.IsKeyPressed(rl.KEY_Z) and player.on_ground then
+        player.vel.y = JUMP_VEL
+    end
+
+    if player.vel.y > not rl.IsKeyDown(rl.KEY_Z) and not player.on_ground then
+        player.vel.y = 200
     end
 
     local old_pos = player.pos
@@ -221,7 +227,6 @@ while not rl.WindowShouldClose() do
     tprint("pos   = " .. tostring(player.pos))
     tprint("vel   = " .. tostring(player.vel))
     tprint("accel = " .. tostring(accel))
-    tprint("decel = " .. tostring(decel))
 
     -- collision with ground
     player.on_ground = false
@@ -286,12 +291,10 @@ while not rl.WindowShouldClose() do
 
     for y = 1, SCREEN_HEIGHT do
         for x = 1, SCREEN_WIDTH do
-            if tilemap[y][x] ~= 0 then
-                if ground_tile ~= nil and vec.eq(ground_tile, vec.v2(x, y)) then
-                    rl.DrawRectangleV(vec.v2(x-1, y-1) * TILE_SIZE, vec.v2(TILE_SIZE, TILE_SIZE), rl.RED)
-                else
-                    rl.DrawRectangleV(vec.v2(x-1, y-1) * TILE_SIZE, vec.v2(TILE_SIZE, TILE_SIZE), rl.WHITE)
-                end
+            local tile = tilemap[y][x]
+            if tile ~= 0 then
+                local color = tile == 2 and rl.RED or rl.WHITE
+                rl.DrawRectangleV(vec.v2(x-1, y-1) * TILE_SIZE, vec.v2(TILE_SIZE, TILE_SIZE), color)
             end
         end
     end
