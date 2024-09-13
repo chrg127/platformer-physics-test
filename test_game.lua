@@ -99,13 +99,13 @@ local TILE_SIZE = 16
 local SCREEN_WIDTH = 25
 local SCREEN_HEIGHT = 20
 -- scale window up to this number
-local SCALE = 1
+local SCALE = 2
 -- set this to true for free movement instead of being bound by gravity
 local FREE_MOVEMENT = false
 
 rl.SetConfigFlags(rl.FLAG_VSYNC_HINT)
 rl.InitWindow(SCREEN_WIDTH * TILE_SIZE * SCALE, SCREEN_HEIGHT * TILE_SIZE * SCALE, "witch game")
-rl.SetTargetFPS(30)
+rl.SetTargetFPS(60)
 
 local buffer = rl.LoadRenderTexture(SCREEN_WIDTH * TILE_SIZE, SCREEN_HEIGHT * TILE_SIZE)
 
@@ -179,12 +179,15 @@ while not rl.WindowShouldClose() do
     tprint("new frame")
 
     -- physics
-    local DECEL = 200
     local ACCEL = 700
+    local DECEL = 300
     local VEL_CAP = 14 * TILE_SIZE
     local GRAVITY = 400
-    local JUMP_HEIGHT = 4 -- tiles
-    local JUMP_VEL = -math.sqrt(2 * GRAVITY * (JUMP_HEIGHT * TILE_SIZE))
+    local JUMP_HEIGHT_MAX = 4.5 -- tiles
+    local JUMP_HEIGHT_MIN = 0.2 -- tiles
+
+    local JUMP_VEL = -math.sqrt(2 * GRAVITY * (JUMP_HEIGHT_MAX * TILE_SIZE))
+    local JUMP_VEL_MIN = -math.sqrt(2 * GRAVITY * (JUMP_HEIGHT_MIN * TILE_SIZE))
 
     local accel_hor = (rl.IsKeyDown(rl.KEY_LEFT)  and -ACCEL or 0)
                     + (rl.IsKeyDown(rl.KEY_RIGHT) and  ACCEL or 0)
@@ -196,7 +199,7 @@ while not rl.WindowShouldClose() do
     local old_vel = player.vel
     player.vel = player.vel + accel * dt
     player.vel.x = clamp(player.vel.x, -VEL_CAP, VEL_CAP)
-    if math.abs(player.vel.x) < 1 then
+    if math.abs(player.vel.x) < 4 then
         player.vel.x = 0
     end
 
@@ -204,8 +207,10 @@ while not rl.WindowShouldClose() do
         player.vel.y = JUMP_VEL
     end
 
-    if player.vel.y > not rl.IsKeyDown(rl.KEY_Z) and not player.on_ground then
-        player.vel.y = 200
+    if not rl.IsKeyDown(rl.KEY_Z)
+        and not player.on_ground
+        and player.vel.y < JUMP_VEL_MIN then
+        player.vel.y = JUMP_VEL_MIN
     end
 
     local old_pos = player.pos
