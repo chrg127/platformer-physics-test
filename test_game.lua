@@ -23,10 +23,10 @@ end
 
 local rec = {}
 
-function rec.new(x, y, w, h) return rl.new("Rectangle", x, y, w, h) end
-function rec.newV(pos, size) return rl.new("Rectangle", pos.x, pos.y, size.x, size.y) end
+function rec.new(pos, size) return rl.new("Rectangle", pos.x, pos.y, size.x, size.y) end
 
 -- general utilities starting here
+-- (not all of these are used, but they're nice to have)
 function lt(a, b) return a < b end
 function gt(a, b) return a > b end
 function sign(x) return x < 0 and -1 or x > 0 and 1 or 0 end
@@ -85,7 +85,7 @@ function lerp(a, b, t)
 end
 
 function aabb_point_inside(aabb, p)
-    return rl.CheckCollisionPointRec(p, rec.newV(aabb[1], aabb[2] - aabb[1]))
+    return rl.CheckCollisionPointRec(p, rec.new(aabb[1], aabb[2] - aabb[1]))
 end
 
 function clamp(x, min, max)
@@ -94,8 +94,7 @@ end
 
 -- our game uses 16x16 tiles
 local TILE_SIZE = 16
--- a screen will always be 20x16 tiles
--- smw is 16x14, so this viewport is slightly larger
+-- a screen will always be 25x20 tiles
 local SCREEN_WIDTH = 25
 local SCREEN_HEIGHT = 20
 -- scale window up to this number
@@ -147,24 +146,42 @@ function t2p(t)
 end
 
 local player = {
-    pos = vec.v2(SCREEN_WIDTH * TILE_SIZE / 2, SCREEN_HEIGHT * TILE_SIZE / 2) - vec.v2(8, 0),
-    draw_size = vec.v2(TILE_SIZE, TILE_SIZE * 2),
-    hitbox = { vec.v2(0, 0), vec.v2(TILE_SIZE-0, TILE_SIZE*2) },
-    vel = vec.v2(0, 0),
-    on_ground = false,
-    old_on_ground = false,
-    coyote_time = 0,
-    jump_buf = false,
-    collision_points = {
-        {
-            { vec.v2(  0,  8), vec.v2(  0, 16), vec.v2(  0, 24), }, --left
-            { vec.v2(  0,-24), vec.v2(  0,-16), vec.v2(  0, -8), }  -- right 
-        }, {
-            { vec.v2(  4,  0), vec.v2( 12,  0), }, -- top
-            { vec.v2(-12,  0), vec.v2( -4,  0), }  -- bottom
-        }
-    },
+    pos           = vec.v2(SCREEN_WIDTH, SCREEN_HEIGHT) * TILE_SIZE / 2
+                  - vec.v2(TILE_SIZE/2, 0),
+    vel           = vec.zero,
+    on_ground     = false,
+    coyote_time   = 0,
+    jump_buf      = false,
 }
+
+local PLAYER_DRAW_SIZE = vec.v2(TILE_SIZE, TILE_SIZE * 2)
+local PLAYER_HITBOX = { vec.v2(0, 0), vec.v2(TILE_SIZE-0, TILE_SIZE*2) }
+
+local PLAYER_COLLISION_POINTS = {
+    {
+        { vec.v2(  0,  8), vec.v2(  0, 16), vec.v2(  0, 24), }, -- left
+        { vec.v2(  0,-24), vec.v2(  0,-16), vec.v2(  0, -8), }  -- right
+    }, {
+        { vec.v2(  4,  0), vec.v2( 12,  0), }, -- top
+        { vec.v2(-12,  0), vec.v2( -4,  0), }  -- bottom
+    }
+}
+
+-- physics constant for the player, change these to control the "feel" of the game
+local ACCEL = 700
+local DECEL = 300
+local VEL_CAP = 14 * TILE_SIZE
+local GRAVITY = 400
+-- used when pressing the jump button while falling
+local SLOW_GRAVITY = 300
+local JUMP_HEIGHT_MAX = 4.5 -- tiles
+local JUMP_HEIGHT_MIN = 0.2 -- tiles
+local COYOTE_TIME_FRAMES = 10
+-- how many pixels over the ground should a jump be registered?
+local JUMP_BUF_WINDOW = 16
+
+local JUMP_VEL     = -math.sqrt(2 * GRAVITY * (JUMP_HEIGHT_MAX * TILE_SIZE))
+local JUMP_VEL_MIN = -math.sqrt(2 * GRAVITY * (JUMP_HEIGHT_MIN * TILE_SIZE))
 
 local logfile = io.open("log.txt", "w")
 
@@ -181,19 +198,7 @@ while not rl.WindowShouldClose() do
 
     tprint(tostring(rl.GetFPS()) .. " FPS")
 
-    -- physics
-    local ACCEL = 700
-    local DECEL = 300
-    local VEL_CAP = 14 * TILE_SIZE
-    local GRAVITY = 400
-    local SLOW_GRAVITY = 300 -- used when pressing the jump button while falling
-    local JUMP_HEIGHT_MAX = 4.5 -- tiles
-    local JUMP_HEIGHT_MIN = 0.2 -- tiles
-    local COYOTE_TIME_FRAMES = 10
-
-    local JUMP_VEL     = -math.sqrt(2 * GRAVITY * (JUMP_HEIGHT_MAX * TILE_SIZE))
-    local JUMP_VEL_MIN = -math.sqrt(2 * GRAVITY * (JUMP_HEIGHT_MIN * TILE_SIZE))
-
+    -- player physics
     local accel_hor = (rl.IsKeyDown(rl.KEY_LEFT)  and -ACCEL or 0)
                     + (rl.IsKeyDown(rl.KEY_RIGHT) and  ACCEL or 0)
     local decel_hor = player.vel.x > 0 and -DECEL
@@ -215,9 +220,6 @@ while not rl.WindowShouldClose() do
         player.vel.y = JUMP_VEL
         player.jump_buf = false
     end
-    player.coyote_time = (player.old_on_ground and not player.on_ground and player.vel.y > 0) and COYOTE_TIME_FRAMES
-                      or (player.on_ground) and 0
-                      or math.max(0, player.coyote_time - 1)
 
     if not rl.IsKeyDown(rl.KEY_Z) and not player.on_ground
        and player.vel.y < JUMP_VEL_MIN then
@@ -238,10 +240,9 @@ while not rl.WindowShouldClose() do
     tprint("pos    = " .. tostring(player.pos))
     tprint("vel    = " .. tostring(player.vel))
     tprint("accel  = " .. tostring(accel))
-    tprint("coyote = " .. tostring(player.coyote_time))
 
     -- collision with ground
-    player.old_on_ground = player.on_ground
+    local old_on_ground = player.on_ground
     player.on_ground = false
     local callbacks = {
         function () tprint("pushing left") end,
@@ -253,8 +254,8 @@ while not rl.WindowShouldClose() do
         end
     }
 
-    local hitbox = map(function (_, v) return v + player.pos end, player.hitbox)
-    tprint(fmt.tostring("hitbox =", hitbox))
+    local hitbox = map(function (_, v) return v + player.pos end, PLAYER_HITBOX)
+    tprint("hitbox = {" .. tostring(hitbox[1]) .. ", " .. tostring(hitbox[2]) .. "}")
 
     function get_tiles(points)
         local ts = {}
@@ -278,7 +279,7 @@ while not rl.WindowShouldClose() do
         end, from)
     end
 
-    local points = get_points(hitbox, player.collision_points)
+    local points = get_points(hitbox, PLAYER_COLLISION_POINTS)
 
     for axis = 0, 1 do
         local fns = { vec.x, vec.y }
@@ -290,7 +291,7 @@ while not rl.WindowShouldClose() do
             if math.abs(tile) ~= math.huge then
                 player.vel = vec.set_dim(player.vel, axis, 0)
                 local diff = { 0, dim(hitbox[1]) - dim(hitbox[2]) }
-                player.pos = vec.set_dim(player.pos, axis, tile + diff[move+1] - dim(player.hitbox[1]))
+                player.pos = vec.set_dim(player.pos, axis, tile + diff[move+1] - dim(PLAYER_HITBOX[1]))
                 callbacks[axis * 2 + move + 1]()
             end
         end
@@ -298,18 +299,20 @@ while not rl.WindowShouldClose() do
 
     tprint("pos (adjusted) = " .. tostring(player.pos))
 
+    player.coyote_time = (old_on_ground and not player.on_ground and player.vel.y > 0) and COYOTE_TIME_FRAMES
+                      or (player.on_ground) and 0
+                      or math.max(0, player.coyote_time - 1)
+    tprint("coyote = " .. tostring(player.coyote_time))
+
     -- do jump buffering here since we've got points calculated...
-    -- and #filter(function (_, v) return not is_air(v) end,
-    --          map(function (_, v) return p2t(v + vec.v2(0, 10)) end,
-    --              points[2][2])) > 0 then
     if rl.IsKeyPressed(rl.KEY_Z) and not player.on_ground and player.vel.y > 0 then
+        print("checking points")
         for _, p in ipairs(points[2][2]) do
-            if not is_air(p2t(p + vec.v2(0, 12))) then
+            if not is_air(p2t(p + vec.v2(0, JUMP_BUF_WINDOW))) then
                 player.jump_buf = true
             end
         end
     end
-
     tprint("jump buf = " .. tostring(player.jump_buf))
 
     camera.target = player.pos
@@ -340,7 +343,7 @@ while not rl.WindowShouldClose() do
         end
     end
 
-    rl.DrawRectangleLinesEx(rec.newV(player.pos, player.draw_size), 1.0, rl.RED)
+    rl.DrawRectangleLinesEx(rec.new(player.pos, PLAYER_DRAW_SIZE), 1.0, rl.RED)
 
     rl.EndMode2D()
 
@@ -352,9 +355,9 @@ while not rl.WindowShouldClose() do
 
     rl.DrawTexturePro(
         buffer.texture,
-        rec.new(0, 0, SCREEN_WIDTH * TILE_SIZE        , -SCREEN_HEIGHT * TILE_SIZE        ),
-        rec.new(0, 0, SCREEN_WIDTH * TILE_SIZE * SCALE,  SCREEN_HEIGHT * TILE_SIZE * SCALE),
-        vec.v2(0, 0), 0,
+        rec.new(vec.zero, vec.v2(SCREEN_WIDTH * TILE_SIZE        , -SCREEN_HEIGHT * TILE_SIZE        )),
+        rec.new(vec.zero, vec.v2(SCREEN_WIDTH * TILE_SIZE * SCALE,  SCREEN_HEIGHT * TILE_SIZE * SCALE)),
+        vec.zero, 0,
         rl.WHITE
     )
 
