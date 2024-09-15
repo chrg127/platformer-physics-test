@@ -1,3 +1,4 @@
+local ffi = require "ffi"
 local fmt = require "fmt"
 
 local vec = {}
@@ -110,6 +111,31 @@ local buffer = rl.LoadRenderTexture(SCREEN_WIDTH * TILE_SIZE, SCREEN_HEIGHT * TI
 
 local camera = rl.new("Camera2D", vec.v2(SCREEN_WIDTH * TILE_SIZE / 2, SCREEN_HEIGHT * TILE_SIZE / 2), vec.v2(0, 0), 0, 1)
 
+function get_normal(a, b)
+    -- assumes a and b are in counter-clockwise order
+    return vec.normalize(vec.rotate(a - b, -math.pi/2))
+end
+
+-- store info about a tile here, such as color, shape, normals, etc.
+-- (there are other ways to structure this data, such as struct-of-arrays, but
+-- this way the quickest to code)
+local tile_info = {
+    [1]  = { color = rl.WHITE, },
+    [2]  = { color = rl.RED, },
+    [3]  = { color = rl.WHITE, slope = { part = 'top',  points = { vec.v2(1, 1), vec.v2(0, 0), vec.v2(0, 1) } } },
+    [4]  = { color = rl.WHITE, slope = { part = 'top',  points = { vec.v2(1, 0), vec.v2(0, 1), vec.v2(1, 1) } } },
+    [5]  = { color = rl.WHITE, slope = { part = 'top',  points = { vec.v2(0, 0), vec.v2(1, 1), vec.v2(1, 0) } } },
+    [6]  = { color = rl.WHITE, slope = { part = 'top',  points = { vec.v2(0, 1), vec.v2(1, 0), vec.v2(0, 0) } } },
+    [7]  = { color = rl.WHITE, slope = { part = 'top',  points = { vec.v2(1, 0), vec.v2(0, 2), vec.v2(1, 2) } } },
+    [8]  = { color = rl.WHITE, slope = { part = 'part', points = { vec.v2(1, 0), vec.v2(0, 2), vec.v2(1, 2) } } },
+    [9]  = { color = rl.WHITE, slope = { part = 'top',  points = { vec.v2(1, 2), vec.v2(0, 0), vec.v2(0, 2) } } },
+    [10] = { color = rl.WHITE, slope = { part = 'part', points = { vec.v2(1, 2), vec.v2(0, 0), vec.v2(0, 2) } } },
+    [11] = { color = rl.WHITE, slope = { part = 'top',  points = { vec.v2(0, 2), vec.v2(1, 0), vec.v2(0, 0) } } },
+    [12] = { color = rl.WHITE, slope = { part = 'part', points = { vec.v2(0, 2), vec.v2(1, 0), vec.v2(0, 0) } } },
+    [13] = { color = rl.WHITE, slope = { part = 'top',  points = { vec.v2(0, 0), vec.v2(1, 2), vec.v2(1, 0) } } },
+    [14] = { color = rl.WHITE, slope = { part = 'part', points = { vec.v2(0, 0), vec.v2(1, 2), vec.v2(1, 0) } } },
+}
+
 local tilemap = {
     { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
     { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
@@ -122,12 +148,12 @@ local tilemap = {
     { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
     { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
     { 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-    { 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-    { 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-    { 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-    { 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-    { 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-    { 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0 },
+    { 0, 0, 0, 7, 9, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+    { 0, 0, 0, 8, 10, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+    { 0, 0, 0, 13, 11, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+    { 0, 0, 0, 14, 12, 1, 1, 1, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+    { 0, 0, 0, 4, 3, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+    { 0, 0, 0, 5, 6, 1, 0, 0, 0, 2, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0 },
     { 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 0, 1, 0, 1, 0, 1 },
     { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0 },
     { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
@@ -327,8 +353,22 @@ while not rl.WindowShouldClose() do
         for x = 1, SCREEN_WIDTH do
             local tile = tilemap[y][x]
             if tile ~= 0 then
-                local color = tile == 2 and rl.RED or rl.WHITE
-                rl.DrawRectangleV(vec.v2(x-1, y-1) * TILE_SIZE, vec.v2(TILE_SIZE, TILE_SIZE), color)
+                local info = tile_info[tile]
+                local orig = t2p(vec.v2(x, y))
+                if info.slope ~= nil then
+                    if info.slope.part == 'top' then
+                        local points = map(function (_, p)
+                            return orig + p * TILE_SIZE
+                        end, info.slope.points)
+                        rl.DrawTriangle(points[1], points[2], points[3], info.color)
+                        local normal = get_normal(points[1], points[2])
+                        local slope_height = maxf(vec.y, info.slope.points)
+                        local line_orig = orig + vec.v2(TILE_SIZE, TILE_SIZE * slope_height) / 2
+                        rl.DrawLineV(line_orig, line_orig + normal * TILE_SIZE, rl.RED)
+                    end
+                else
+                    rl.DrawRectangleV(orig, vec.v2(TILE_SIZE, TILE_SIZE), info.color)
+                end
             end
         end
     end
