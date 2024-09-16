@@ -114,7 +114,7 @@ local TILE_SIZE = 16
 local SCREEN_WIDTH = 25
 local SCREEN_HEIGHT = 20
 -- scale window up to this number
-local SCALE = 1
+local SCALE = 2
 -- set this to true for free movement instead of being bound by gravity
 local FREE_MOVEMENT = false
 
@@ -204,11 +204,11 @@ local PLAYER_HITBOX = { vec.v2(0, 0), vec.v2(TILE_SIZE-0, TILE_SIZE*2) }
 
 local PLAYER_COLLISION_POINTS = {
     {
-        { vec.v2(  0,  8), vec.v2(  0, 16), vec.v2(  0, 24), }, -- left
-        { vec.v2(  0,-24), vec.v2(  0,-16), vec.v2(  0, -8), }  -- right
+        { vec.v2( -1,  4), vec.v2( -1, 16), vec.v2( -1, 28), }, -- left
+        { vec.v2(  0,-28), vec.v2(  0,-16), vec.v2(  0, -4), }  -- right
     }, {
-        { vec.v2(  4,  0), vec.v2( 12,  0), }, -- top
-        { vec.v2(-12,  0), vec.v2( -4,  0), }  -- bottom
+        { vec.v2(  0,  0), vec.v2( 15,  0), }, -- top
+        { vec.v2(-16,  0), vec.v2( -1,  0), }  -- bottom
     }
 }
 
@@ -330,8 +330,13 @@ while not rl.WindowShouldClose() do
     for axis = 0, 1 do
         local fns = { vec.x, vec.y }
         local dim = fns[axis+1]
-        for move = 0, 1 do
+        local move = sign(dim(player.pos - old_pos))
+        if move ~= 0 then
+            move = move == -1 and 0 or 1
+
+        -- for move = 0, 1 do
             local tiles = get_tiles(points[axis+1][move+1], axis, move)
+            tprint(fmt.tostring("tiles =", tiles))
             local tiles2 = flatten(map(function (_, t)
                 local p = t2p(t)
                 return { p, p + vec.v2(TILE_SIZE, TILE_SIZE) }
@@ -350,7 +355,11 @@ while not rl.WindowShouldClose() do
             if math.abs(tile) ~= math.huge then
                 player.vel = vec.set_dim(player.vel, axis, 0)
                 local diff = { 0, dim(hitbox[1]) - dim(hitbox[2]) }
-                player.pos = vec.set_dim(player.pos, axis, tile + diff[move+1] - dim(PLAYER_HITBOX[1]))
+                local new_dim = math.floor(tile + diff[move+1] - dim(PLAYER_HITBOX[1]))
+                player.pos = vec.set_dim(player.pos, axis, new_dim)
+                tprint(fmt.tostring("new_dim =", new_dim))
+                hitbox = map(function (_, v) return v + player.pos end, PLAYER_HITBOX)
+                points = get_points(hitbox, PLAYER_COLLISION_POINTS)
                 callbacks[axis * 2 + move + 1]()
             end
         end
@@ -406,6 +415,8 @@ while not rl.WindowShouldClose() do
         end
     end
 
+    rl.DrawRectangleLinesEx(rec.new(player.pos, PLAYER_DRAW_SIZE), 1.0, rl.RED)
+
     if points ~= nil then
         for _, ps1 in ipairs(points) do
             for _, ps2 in ipairs(ps1) do
@@ -415,8 +426,6 @@ while not rl.WindowShouldClose() do
             end
         end
     end
-
-    rl.DrawRectangleLinesEx(rec.new(player.pos, PLAYER_DRAW_SIZE), 1.0, rl.RED)
 
     rl.EndMode2D()
 
