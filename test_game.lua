@@ -3,8 +3,9 @@ local fmt = require "fmt"
 
 local vec = {}
 
-vec.unit = rl.new("Vector2", 1, 1)
+vec.one  = rl.new("Vector2", 1, 1)
 vec.zero = rl.new("Vector2", 0, 0)
+vec.huge = rl.new("Vector2", math.huge, math.huge)
 
 function vec.v2(x, y) return rl.new("Vector2", x, y) end
 function vec.normalize(v) return rl.Vector2Normalize(v) end
@@ -67,12 +68,12 @@ function foldl(fn, init, t)
     return r
 end
 
-function minf(fn, t)
-    return foldl(function (k, v, r) return math.min(fn(v), r) end, math.huge, t)
+function minf(fn, init, t)
+    return foldl(function (k, v, r) return fn(v) < fn(r) and v or r end, init, t)
 end
 
-function maxf(fn, t)
-    return foldl(function (k, v, r) return math.max(fn(v), r) end, -math.huge, t)
+function maxf(fn, init, t)
+    return foldl(function (k, v, r) return fn(v) > fn(r) and v or r end, init, t)
 end
 
 function identity(x) return x end
@@ -114,7 +115,7 @@ local TILE_SIZE = 16
 local SCREEN_WIDTH = 25
 local SCREEN_HEIGHT = 20
 -- scale window up to this number
-local SCALE = 2
+local SCALE = 1
 -- set this to true for free movement instead of being bound by gravity
 local FREE_MOVEMENT = false
 
@@ -162,7 +163,7 @@ local tilemap = {
     {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
     {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
     {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
-    {  0,  0,  0,  0,  0,  1,  1,  1,  1,  2,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
+    {  0,  0,  0,  0,  0,  1,  1,  1,  1,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
     {  0,  0,  0,  7,  9,  0,  0,  0,  0,  1,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
     {  0,  0,  0,  8, 10,  0,  0,  0,  0,  2,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
     {  0,  0,  0, 13, 11,  0,  0,  0,  0,  1,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
@@ -204,7 +205,7 @@ local PLAYER_HITBOX = { vec.v2(0, 0), vec.v2(TILE_SIZE-0, TILE_SIZE*2) }
 
 local PLAYER_COLLISION_POINTS = {
     {
-        { vec.v2( -1,  4), vec.v2( -1, 16), vec.v2( -1, 28), }, -- left
+        { vec.v2(  0,  4), vec.v2(  0, 16), vec.v2(  0, 28), }, -- left
         { vec.v2(  0,-28), vec.v2(  0,-16), vec.v2(  0, -4), }  -- right
     }, {
         { vec.v2(  0,  0), vec.v2( 15,  0), }, -- top
@@ -299,16 +300,13 @@ while not rl.WindowShouldClose() do
         end
     }
 
-    local hitbox = map(function (_, v) return v + player.pos end, PLAYER_HITBOX)
-    tprint("hitbox = {" .. tostring(hitbox[1]) .. ", " .. tostring(hitbox[2]) .. "}")
-
     function get_tiles(points, axis, move)
         local ts = {}
         for _, p in ipairs(points) do
             local t = p2t(p)
             if not is_air(t) then
                 local tile = tilemap[t.y][t.x]
-                if not (is_slope(tile) and axis == 0) then
+                if not (is_slope(tile) and axis == 1) then
                     table.insert(ts, t)
                 end
             end
@@ -325,41 +323,36 @@ while not rl.WindowShouldClose() do
         end, from)
     end
 
-    local points = get_points(hitbox, PLAYER_COLLISION_POINTS)
-
+    -- 0 = up, left
+    -- 1 = down, right
     for axis = 0, 1 do
         local fns = { vec.x, vec.y }
         local dim = fns[axis+1]
         local move = sign(dim(player.pos - old_pos))
-        if move ~= 0 then
-            move = move == -1 and 0 or 1
 
-        -- for move = 0, 1 do
+        for move = 0, 1 do
+        --if move ~= 0 then
+            --move = move == -1 and 0 or 1
+            local hitbox = map(function (_, v) return v + player.pos end, PLAYER_HITBOX)
+            local points = get_points(hitbox, PLAYER_COLLISION_POINTS)
             local tiles = get_tiles(points[axis+1][move+1], axis, move)
-            tprint(fmt.tostring("tiles =", tiles))
-            local tiles2 = flatten(map(function (_, t)
-                local p = t2p(t)
-                return { p, p + vec.v2(TILE_SIZE, TILE_SIZE) }
-            end, tiles))
-            if axis == 1 and move == 1 then
-                tprint(fmt.tostring("tiles =", tiles[1], tiles[2]))
-                if #tiles > 2 then
-                    tprint(fmt.tostring(tiles[3]))
-                end
-                if #tiles > 3 then
-                    tprint(fmt.tostring(tiles[4]))
-                end
-            end
             local ops = {maxf, minf}
-            local tile = ops[move+1](dim, tiles2)
-            if math.abs(tile) ~= math.huge then
-                player.vel = vec.set_dim(player.vel, axis, 0)
-                local diff = { 0, dim(hitbox[1]) - dim(hitbox[2]) }
-                local new_dim = math.floor(tile + diff[move+1] - dim(PLAYER_HITBOX[1]))
-                player.pos = vec.set_dim(player.pos, axis, new_dim)
-                tprint(fmt.tostring("new_dim =", new_dim))
-                hitbox = map(function (_, v) return v + player.pos end, PLAYER_HITBOX)
-                points = get_points(hitbox, PLAYER_COLLISION_POINTS)
+            local inits = { -vec.huge, vec.huge }
+            local tile = ops[move+1](dim, inits[move+1], tiles)
+            if math.abs(dim(tile)) ~= math.huge then
+                local tl = t2p(tile)
+                if is_slope(tilemap[tile.y][tile.x]) then
+                    tprint("in slope")
+                    local x = player.pos.x + (move == 1 and 0 or TILE_SIZE)
+                    --local y = tl.y
+                    player.pos = vec.v2(x, player.pos.y)
+                else
+                    local point = tl + (move == 1 and vec.zero or vec.one * TILE_SIZE)
+                    local diff = { 0, dim(hitbox[1]) - dim(hitbox[2]) }
+                    local new_dim = dim(point) + diff[move+1] - dim(PLAYER_HITBOX[1])
+                    player.vel = vec.set_dim(player.vel, axis, 0)
+                    player.pos = vec.set_dim(player.pos, axis, new_dim)
+                end
                 callbacks[axis * 2 + move + 1]()
             end
         end
@@ -372,7 +365,8 @@ while not rl.WindowShouldClose() do
                       or math.max(0, player.coyote_time - 1)
     tprint("coyote = " .. tostring(player.coyote_time))
 
-    -- do jump buffering here since we've got points calculated...
+    local hitbox = map(function (_, v) return v + player.pos end, PLAYER_HITBOX)
+    local points = get_points(hitbox, PLAYER_COLLISION_POINTS)
     if rl.IsKeyPressed(rl.KEY_Z) and not player.on_ground and player.vel.y > 0 then
         print("checking points")
         for _, p in ipairs(points[2][2]) do
@@ -404,8 +398,8 @@ while not rl.WindowShouldClose() do
                         end, info.slope.points)
                         rl.DrawTriangle(points[1], points[2], points[3], info.color)
                         local normal = get_normal(points[1], points[2])
-                        local slope_height = maxf(vec.y, info.slope.points)
-                        local line_orig = orig + vec.v2(TILE_SIZE, TILE_SIZE * slope_height) / 2
+                        local slope_height = maxf(vec.y, -vec.huge, info.slope.points)
+                        local line_orig = orig + vec.v2(TILE_SIZE, TILE_SIZE * slope_height.y) / 2
                         rl.DrawLineV(line_orig, line_orig + normal * TILE_SIZE, rl.RED)
                     end
                 else
