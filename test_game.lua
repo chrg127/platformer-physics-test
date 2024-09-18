@@ -101,6 +101,18 @@ function lerp(a, b, t)
     return a + t*(b - a)
 end
 
+function triangle_point_collision(t, p)
+    function heron(t)
+        return math.abs((t[2].x - t[1].x) * (t[3].y - t[1].y)
+                      - (t[3].x - t[1].x) * (t[2].y - t[1].y))
+    end
+    local area = heron(t)
+    local area1 = heron({p, t[1], t[2]})
+    local area2 = heron({p, t[2], t[3]})
+    local area3 = heron({p, t[3], t[1]})
+    return area1 + area2 + area3 == area
+end
+
 function aabb_point_inside(aabb, p)
     return rl.CheckCollisionPointRec(p, rec.new(aabb[1], aabb[2] - aabb[1]))
 end
@@ -168,10 +180,10 @@ local tilemap = {
     {  0,  0,  0,  8, 10,  0,  0,  0,  0,  2,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
     {  0,  0,  0, 13, 11,  0,  0,  0,  0,  1,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
     {  0,  0,  0, 14, 12,  1,  1,  1,  1,  2,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
-    {  0,  0,  0,  4,  3,  1,  0,  0,  0,  1,  0,  0,  1,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
-    {  0,  0,  0,  5,  6,  1,  0,  0,  0,  2,  0,  0,  1,  0,  0,  0,  0,  0,  0,  1,  0,  1,  0,  1,  0 },
-    {  1,  1,  1,  1,  1,  1,  0,  0,  0,  1,  1,  1,  0,  0,  0,  4,  1,  1,  1,  0,  1,  0,  1,  0,  1 },
-    {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  1,  1,  1,  1,  0,  0,  0,  0,  0,  0,  0,  0 },
+    {  0,  0,  0,  4,  3,  1,  0,  0,  0,  1,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
+    {  0,  0,  0,  5,  6,  1,  0,  0,  0,  2,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  0,  1,  0,  1,  0 },
+    {  1,  1,  1,  1,  1,  1,  0,  0,  0,  1,  1,  0,  0,  0,  0,  4,  1,  1,  1,  0,  1,  0,  1,  0,  1 },
+    {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  1,  1,  1,  1,  1,  0,  0,  0,  0,  0,  0,  0,  0 },
     {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
 }
 
@@ -181,6 +193,10 @@ end
 
 function is_slope(ti)
     return ti >= 3
+end
+
+function get_triangle_points(t)
+    return map(function (_, p) return p * TILE_SIZE + t2p(t) end, tile_info[tilemap[t.y][t.x]].slope.points)
 end
 
 function p2t(p)
@@ -306,7 +322,8 @@ while not rl.WindowShouldClose() do
             local t = p2t(p)
             if not is_air(t) then
                 local tile = tilemap[t.y][t.x]
-                if not (is_slope(tile) and axis == 1) then
+                if not is_slope(tile) or (axis ~= 1) --then
+                    and triangle_point_collision(get_triangle_points(t), p) then
                     table.insert(ts, t)
                 end
             end
@@ -342,10 +359,12 @@ while not rl.WindowShouldClose() do
             if math.abs(dim(tile)) ~= math.huge then
                 local tl = t2p(tile)
                 if is_slope(tilemap[tile.y][tile.x]) then
-                    tprint("in slope")
-                    local x = player.pos.x + (move == 1 and 0 or TILE_SIZE)
-                    --local y = tl.y
-                    player.pos = vec.v2(x, player.pos.y)
+                    tprint(fmt.tostring("in slope", tile, tl))
+                    local x = player.pos.x + (move == 1 and TILE_SIZE or 0)
+                    local y = tl.y + TILE_SIZE - (x - tl.x)
+                    player.pos = vec.v2(x, y) - vec.v2(TILE_SIZE, TILE_SIZE*2)
+                    player.vel.y = 0
+                    callbacks[1 * 2 + 1 + 1]()
                 else
                     local point = tl + (move == 1 and vec.zero or vec.one * TILE_SIZE)
                     local diff = { 0, dim(hitbox[1]) - dim(hitbox[2]) }
@@ -359,6 +378,7 @@ while not rl.WindowShouldClose() do
     end
 
     tprint("pos (adjusted) = " .. tostring(player.pos))
+    tprint("on ground = " .. tostring(player.on_ground))
 
     player.coyote_time = (old_on_ground and not player.on_ground and player.vel.y > 0) and COYOTE_TIME_FRAMES
                       or (player.on_ground) and 0
