@@ -130,6 +130,7 @@ local SCREEN_HEIGHT = 20
 local SCALE = 1
 -- set this to true for free movement instead of being bound by gravity
 local FREE_MOVEMENT = false
+local FREE_MOVEMENT_SPEED = 2
 
 rl.SetConfigFlags(rl.FLAG_VSYNC_HINT)
 rl.InitWindow(SCREEN_WIDTH * TILE_SIZE * SCALE, SCREEN_HEIGHT * TILE_SIZE * SCALE, "witch game")
@@ -144,24 +145,32 @@ function get_normal(a, b)
     return vec.normalize(vec.rotate(a - b, -math.pi/2))
 end
 
+function slope(part, p1, p2, p3)
+    return {
+        part = part,
+        points = { p1, p2, p3 },
+        normal = get_normal(p1, p2)
+    }
+end
+
 -- store info about a tile here, such as color, shape, normals, etc.
 -- (there are other ways to structure this data, such as struct-of-arrays, but
 -- this way the quickest to code)
 local tile_info = {
     [1]  = { color = rl.WHITE, },
     [2]  = { color = rl.RED, },
-    [3]  = { color = rl.WHITE, slope = { part = 'top',  points = { vec.v2(1, 1), vec.v2(0, 0), vec.v2(0, 1) } } },
-    [4]  = { color = rl.WHITE, slope = { part = 'top',  points = { vec.v2(1, 0), vec.v2(0, 1), vec.v2(1, 1) } } },
-    [5]  = { color = rl.WHITE, slope = { part = 'top',  points = { vec.v2(0, 0), vec.v2(1, 1), vec.v2(1, 0) } } },
-    [6]  = { color = rl.WHITE, slope = { part = 'top',  points = { vec.v2(0, 1), vec.v2(1, 0), vec.v2(0, 0) } } },
-    [7]  = { color = rl.WHITE, slope = { part = 'top',  points = { vec.v2(1, 0), vec.v2(0, 2), vec.v2(1, 2) } } },
-    [8]  = { color = rl.WHITE, slope = { part = 'part', points = { vec.v2(1, 0), vec.v2(0, 2), vec.v2(1, 2) } } },
-    [9]  = { color = rl.WHITE, slope = { part = 'top',  points = { vec.v2(1, 2), vec.v2(0, 0), vec.v2(0, 2) } } },
-    [10] = { color = rl.WHITE, slope = { part = 'part', points = { vec.v2(1, 2), vec.v2(0, 0), vec.v2(0, 2) } } },
-    [11] = { color = rl.WHITE, slope = { part = 'top',  points = { vec.v2(0, 2), vec.v2(1, 0), vec.v2(0, 0) } } },
-    [12] = { color = rl.WHITE, slope = { part = 'part', points = { vec.v2(0, 2), vec.v2(1, 0), vec.v2(0, 0) } } },
-    [13] = { color = rl.WHITE, slope = { part = 'top',  points = { vec.v2(0, 0), vec.v2(1, 2), vec.v2(1, 0) } } },
-    [14] = { color = rl.WHITE, slope = { part = 'part', points = { vec.v2(0, 0), vec.v2(1, 2), vec.v2(1, 0) } } },
+    [3]  = { color = rl.WHITE, slope = slope('top',  vec.v2(1, 1), vec.v2(0, 0), vec.v2(0, 1)) },
+    [4]  = { color = rl.WHITE, slope = slope('top',  vec.v2(1, 0), vec.v2(0, 1), vec.v2(1, 1)) },
+    [5]  = { color = rl.WHITE, slope = slope('top',  vec.v2(0, 0), vec.v2(1, 1), vec.v2(1, 0)) },
+    [6]  = { color = rl.WHITE, slope = slope('top',  vec.v2(0, 1), vec.v2(1, 0), vec.v2(0, 0)) },
+    [7]  = { color = rl.WHITE, slope = slope('top',  vec.v2(1, 0), vec.v2(0, 2), vec.v2(1, 2)) },
+    [8]  = { color = rl.WHITE, slope = slope('part', vec.v2(1, 0), vec.v2(0, 2), vec.v2(1, 2)) },
+    [9]  = { color = rl.WHITE, slope = slope('top',  vec.v2(1, 2), vec.v2(0, 0), vec.v2(0, 2)) },
+    [10] = { color = rl.WHITE, slope = slope('part', vec.v2(1, 2), vec.v2(0, 0), vec.v2(0, 2)) },
+    [11] = { color = rl.WHITE, slope = slope('top',  vec.v2(0, 2), vec.v2(1, 0), vec.v2(0, 0)) },
+    [12] = { color = rl.WHITE, slope = slope('part', vec.v2(0, 2), vec.v2(1, 0), vec.v2(0, 0)) },
+    [13] = { color = rl.WHITE, slope = slope('top',  vec.v2(0, 0), vec.v2(1, 2), vec.v2(1, 0)) },
+    [14] = { color = rl.WHITE, slope = slope('part', vec.v2(0, 0), vec.v2(1, 2), vec.v2(1, 0)) },
 }
 
 local tilemap = {
@@ -225,7 +234,7 @@ local PLAYER_COLLISION_POINTS = {
         { vec.v2(  0,-28), vec.v2(  0,-16), vec.v2(  0, -4), }  -- right
     }, {
         { vec.v2(  0,  0), vec.v2( 15,  0), }, -- top
-        { vec.v2(-16,  0), vec.v2( -1,  0), }  -- bottom
+        { vec.v2(-15,  0), vec.v2( -1,  0), }  -- bottom
     }
 }
 
@@ -295,7 +304,7 @@ while not rl.WindowShouldClose() do
         player.pos = player.pos + vec.v2(
             rl.IsKeyDown(rl.KEY_LEFT) and -1 or rl.IsKeyDown(rl.KEY_RIGHT) and 1 or 0,
             rl.IsKeyDown(rl.KEY_UP)   and -1 or rl.IsKeyDown(rl.KEY_DOWN)  and 1 or 0
-        ) * 4
+        ) * FREE_MOVEMENT_SPEED
     end
 
     tprint("oldpos = " .. tostring(old_pos))
@@ -322,8 +331,8 @@ while not rl.WindowShouldClose() do
             local t = p2t(p)
             if not is_air(t) then
                 local tile = tilemap[t.y][t.x]
-                if not is_slope(tile) or (axis ~= 1) --then
-                    and triangle_point_collision(get_triangle_points(t), p) then
+                if not is_slope(tile)
+                   or triangle_point_collision(get_triangle_points(t), p) then
                     table.insert(ts, t)
                 end
             end
@@ -342,11 +351,12 @@ while not rl.WindowShouldClose() do
 
     -- 0 = up, left
     -- 1 = down, right
+    local got_slope = false
     for axis = 0, 1 do
         local fns = { vec.x, vec.y }
         local dim = fns[axis+1]
         local move = sign(dim(player.pos - old_pos))
-
+        tprint(fmt.tostring("got slope =", got_slope))
         for move = 0, 1 do
         --if move ~= 0 then
             --move = move == -1 and 0 or 1
@@ -358,19 +368,22 @@ while not rl.WindowShouldClose() do
             local tile = ops[move+1](dim, inits[move+1], tiles)
             if math.abs(dim(tile)) ~= math.huge then
                 local tl = t2p(tile)
-                if is_slope(tilemap[tile.y][tile.x]) then
-                    tprint(fmt.tostring("in slope", tile, tl))
-                    local x = player.pos.x + (move == 1 and TILE_SIZE or 0)
-                    local y = tl.y + TILE_SIZE - (x - tl.x)
-                    player.pos = vec.v2(x, y) - vec.v2(TILE_SIZE, TILE_SIZE*2)
-                    player.vel.y = 0
-                    callbacks[1 * 2 + 1 + 1]()
-                else
+                if not (is_slope(tilemap[tile.y][tile.x])) then
                     local point = tl + (move == 1 and vec.zero or vec.one * TILE_SIZE)
                     local diff = { 0, dim(hitbox[1]) - dim(hitbox[2]) }
                     local new_dim = dim(point) + diff[move+1] - dim(PLAYER_HITBOX[1])
                     player.vel = vec.set_dim(player.vel, axis, 0)
                     player.pos = vec.set_dim(player.pos, axis, new_dim)
+                elseif axis == 0 then
+                    got_slope = true
+                    local x = player.pos.x + (move == 1 and TILE_SIZE or 0)
+                    local y = tl.y + TILE_SIZE - (x - tl.x) + 4
+                    player.pos.y = y - TILE_SIZE * 2
+                    player.vel.y = 0
+                    callbacks[1 * 2 + 1 + 1]()
+                    --tprint(fmt.tostring("in slope", tile, tl))
+                    --local x = player.pos.x + (move == 1 and TILE_SIZE or 0)
+                    --player.pos.x = x - TILE_SIZE --vec.v2(x, y) - vec.v2(TILE_SIZE, TILE_SIZE*2)
                 end
                 callbacks[axis * 2 + move + 1]()
             end
@@ -388,7 +401,6 @@ while not rl.WindowShouldClose() do
     local hitbox = map(function (_, v) return v + player.pos end, PLAYER_HITBOX)
     local points = get_points(hitbox, PLAYER_COLLISION_POINTS)
     if rl.IsKeyPressed(rl.KEY_Z) and not player.on_ground and player.vel.y > 0 then
-        print("checking points")
         for _, p in ipairs(points[2][2]) do
             if not is_air(p2t(p + vec.v2(0, JUMP_BUF_WINDOW))) then
                 player.jump_buf = true
@@ -417,7 +429,7 @@ while not rl.WindowShouldClose() do
                             return orig + p * TILE_SIZE
                         end, info.slope.points)
                         rl.DrawTriangle(points[1], points[2], points[3], info.color)
-                        local normal = get_normal(points[1], points[2])
+                        local normal = info.slope.normal
                         local slope_height = maxf(vec.y, -vec.huge, info.slope.points)
                         local line_orig = orig + vec.v2(TILE_SIZE, TILE_SIZE * slope_height.y) / 2
                         rl.DrawLineV(line_orig, line_orig + normal * TILE_SIZE, rl.RED)
