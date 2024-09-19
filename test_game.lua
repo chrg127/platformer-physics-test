@@ -129,7 +129,7 @@ local SCREEN_HEIGHT = 20
 -- scale window up to this number
 local SCALE = 1
 -- set this to true for free movement instead of being bound by gravity
-local FREE_MOVEMENT = false
+local FREE_MOVEMENT = true
 local FREE_MOVEMENT_SPEED = 2
 
 rl.SetConfigFlags(rl.FLAG_VSYNC_HINT)
@@ -234,7 +234,18 @@ local PLAYER_COLLISION_POINTS = {
         { vec.v2(  0,-28), vec.v2(  0,-16), vec.v2(  0, -4), }  -- right
     }, {
         { vec.v2(  0,  0), vec.v2( 15,  0), }, -- top
-        { vec.v2(-15,  0), vec.v2( -1,  0), }  -- bottom
+        { vec.v2(-16,  0), vec.v2( -1,  0), }  -- bottom
+    }
+}
+
+local PLAYER_COLLISION_HITBOXES = {
+    {
+        { vec.v2( 0,  4), vec.v2( 4, 28) }, -- left
+        { vec.v2(12,  4), vec.v2(16, 28) }, -- right
+    },
+    {
+        { vec.v2( 0,  0), vec.v2(15,  4) }, -- up
+        { vec.v2( 0, 28), vec.v2(15, 32) }, -- down
     }
 }
 
@@ -349,6 +360,14 @@ while not rl.WindowShouldClose() do
         end, from)
     end
 
+    function get_hitboxes(hitbox, from)
+        return map(function (_, axis)
+            return map(function (_, dir)
+                return map(function (_, p) return hitbox[1] + p end, dir)
+            end, axis)
+        end, from)
+    end
+
     -- 0 = up, left
     -- 1 = down, right
     local got_slope = false
@@ -362,6 +381,7 @@ while not rl.WindowShouldClose() do
             --move = move == -1 and 0 or 1
             local hitbox = map(function (_, v) return v + player.pos end, PLAYER_HITBOX)
             local points = get_points(hitbox, PLAYER_COLLISION_POINTS)
+            local hitboxes = get_hitboxes(hitbox, PLAYER_COLLISION_HITBOXES)
             local tiles = get_tiles(points[axis+1][move+1], axis, move)
             local ops = {maxf, minf}
             local inits = { -vec.huge, vec.huge }
@@ -441,17 +461,15 @@ while not rl.WindowShouldClose() do
         end
     end
 
+    local hitboxes = get_hitboxes(hitbox, PLAYER_COLLISION_HITBOXES)
     rl.DrawRectangleLinesEx(rec.new(player.pos, PLAYER_DRAW_SIZE), 1.0, rl.RED)
 
-    if points ~= nil then
-        for _, ps1 in ipairs(points) do
-            for _, ps2 in ipairs(ps1) do
-                for _, p in ipairs(ps2) do
-                    rl.DrawPixelV(p, rl.GREEN)
-                end
-            end
+    for _, axis in ipairs(hitboxes) do
+        for _, hitbox in ipairs(axis) do
+            rl.DrawRectangleLinesEx(rec.new(hitbox[1], hitbox[2] - hitbox[1]), 1.0, rl.BLUE)
         end
     end
+
 
     rl.EndMode2D()
 
