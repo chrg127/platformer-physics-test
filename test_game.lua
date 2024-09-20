@@ -129,8 +129,8 @@ local SCREEN_HEIGHT = 20
 -- scale window up to this number
 local SCALE = 1
 -- set this to true for free movement instead of being bound by gravity
-local FREE_MOVEMENT = true
-local FREE_MOVEMENT_SPEED = 2
+local FREE_MOVEMENT = false
+local FREE_MOVEMENT_SPEED = 1
 
 rl.SetConfigFlags(rl.FLAG_VSYNC_HINT)
 rl.InitWindow(SCREEN_WIDTH * TILE_SIZE * SCALE, SCREEN_HEIGHT * TILE_SIZE * SCALE, "witch game")
@@ -240,12 +240,12 @@ local PLAYER_COLLISION_POINTS = {
 
 local PLAYER_COLLISION_HITBOXES = {
     {
-        { vec.v2( 0,  4), vec.v2( 4, 28) }, -- left
-        { vec.v2(12,  4), vec.v2(16, 28) }, -- right
+        { vec.v2( 0,  4), vec.v2( 1, 28) }, -- left
+        { vec.v2(15,  4), vec.v2(16, 28) }, -- right
     },
     {
-        { vec.v2( 0,  0), vec.v2(15,  4) }, -- up
-        { vec.v2( 0, 28), vec.v2(15, 32) }, -- down
+        { vec.v2( 0,  0), vec.v2(15,  1) }, -- up
+        { vec.v2( 0, 31), vec.v2(15, 32) }, -- down
     }
 }
 
@@ -336,7 +336,7 @@ while not rl.WindowShouldClose() do
         end
     }
 
-    function get_tiles(points, axis, move)
+    function get_tiles(points)
         local ts = {}
         for _, p in ipairs(points) do
             local t = p2t(p)
@@ -345,6 +345,22 @@ while not rl.WindowShouldClose() do
                 if not is_slope(tile)
                    or triangle_point_collision(get_triangle_points(t), p) then
                     table.insert(ts, t)
+                end
+            end
+        end
+        return ts
+    end
+
+    function get_tiles2(box)
+        local ts = {}
+        local start = p2t(box[1])
+        local endd  = p2t(box[2])
+        for y = start.y, endd.y do
+            for x = start.x, endd.x do
+                t = vec.v2(x, y)
+                if not is_air(t) then
+                    table.insert(ts, t)
+                       --or triangle_point_collision(get_triangle_points(t), p) then
                 end
             end
         end
@@ -382,25 +398,32 @@ while not rl.WindowShouldClose() do
             local hitbox = map(function (_, v) return v + player.pos end, PLAYER_HITBOX)
             local points = get_points(hitbox, PLAYER_COLLISION_POINTS)
             local hitboxes = get_hitboxes(hitbox, PLAYER_COLLISION_HITBOXES)
-            local tiles = get_tiles(points[axis+1][move+1], axis, move)
+            local possible_tiles = get_tiles2(hitboxes[axis+1][move+1])
             local ops = {maxf, minf}
             local inits = { -vec.huge, vec.huge }
-            local tile = ops[move+1](dim, inits[move+1], tiles)
-            if math.abs(dim(tile)) ~= math.huge then
+            local min_tile = ops[move+1](dim, inits[move+1], possible_tiles)
+            local tiles = filter(function (_, t) return dim(t) == dim(min_tile) end, possible_tiles)
+            if #tiles > 0 then
+                local tile = tiles[1]
                 local tl = t2p(tile)
-                if not (is_slope(tilemap[tile.y][tile.x])) then
-                    local point = tl + (move == 1 and vec.zero or vec.one * TILE_SIZE)
-                    local diff = { 0, dim(hitbox[1]) - dim(hitbox[2]) }
-                    local new_dim = dim(point) + diff[move+1] - dim(PLAYER_HITBOX[1])
-                    player.vel = vec.set_dim(player.vel, axis, 0)
-                    player.pos = vec.set_dim(player.pos, axis, new_dim)
+                if not (is_slope(tilemap[tile.y][tile.x]) or got_slope) then
+                    if not (axis == 0 and is_slope(tilemap[tile.y][tile.x-1])) then
+                        local point = tl + (move == 1 and vec.zero or vec.one * TILE_SIZE)
+                        local diff = { 0, dim(hitbox[1]) - dim(hitbox[2]) }
+                        local new_dim = dim(point) + diff[move+1] - dim(PLAYER_HITBOX[1])
+                        player.vel = vec.set_dim(player.vel, axis, 0)
+                        player.pos = vec.set_dim(player.pos, axis, new_dim)
+                    end
                 elseif axis == 0 then
                     got_slope = true
+                else
                     local x = player.pos.x + (move == 1 and TILE_SIZE or 0)
                     local y = tl.y + TILE_SIZE - (x - tl.x) + 4
-                    player.pos.y = y - TILE_SIZE * 2
-                    player.vel.y = 0
-                    callbacks[1 * 2 + 1 + 1]()
+                    --if player.pos.y >= y then
+                        player.pos.y = y - TILE_SIZE * 2
+                        player.vel.y = 0
+                    --end
+                    -- callbacks[1 * 2 + 1 + 1]()
                     --tprint(fmt.tostring("in slope", tile, tl))
                     --local x = player.pos.x + (move == 1 and TILE_SIZE or 0)
                     --player.pos.x = x - TILE_SIZE --vec.v2(x, y) - vec.v2(TILE_SIZE, TILE_SIZE*2)
@@ -470,7 +493,6 @@ while not rl.WindowShouldClose() do
         end
     end
 
-
     rl.EndMode2D()
 
     for _, line in ipairs(lines_to_print) do
@@ -488,5 +510,7 @@ while not rl.WindowShouldClose() do
     )
 
 	rl.EndDrawing()
+
+    tprint("")
 end
 
