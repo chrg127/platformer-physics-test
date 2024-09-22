@@ -32,6 +32,7 @@ function rec.new(pos, size) return rl.new("Rectangle", pos.x, pos.y, size.x, siz
 function lt(a, b) return a < b end
 function gt(a, b) return a > b end
 function sign(x) return x < 0 and -1 or x > 0 and 1 or 0 end
+function i2b(exp) return exp and 1 or 0 end
 
 function findf(t, x, comp)
     for _, v in pairs(t) do
@@ -127,10 +128,10 @@ local TILE_SIZE = 16
 local SCREEN_WIDTH = 25
 local SCREEN_HEIGHT = 20
 -- scale window up to this number
-local SCALE = 1
+local SCALE = 2
 -- set this to true for free movement instead of being bound by gravity
 local FREE_MOVEMENT = false
-local FREE_MOVEMENT_SPEED = 1
+local FREE_MOVEMENT_SPEED = 2
 
 rl.SetConfigFlags(rl.FLAG_VSYNC_HINT)
 rl.InitWindow(SCREEN_WIDTH * TILE_SIZE * SCALE, SCREEN_HEIGHT * TILE_SIZE * SCALE, "witch game")
@@ -145,9 +146,9 @@ function get_normal(a, b)
     return vec.normalize(vec.rotate(a - b, -math.pi/2))
 end
 
-function slope(part, p1, p2, p3)
+function slope(origin, p1, p2, p3)
     return {
-        part = part,
+        origin = origin,
         points = { p1, p2, p3 },
         normal = get_normal(p1, p2)
     }
@@ -159,18 +160,20 @@ end
 local tile_info = {
     [1]  = { color = rl.WHITE, },
     [2]  = { color = rl.RED, },
-    [3]  = { color = rl.WHITE, slope = slope('top',  vec.v2(1, 1), vec.v2(0, 0), vec.v2(0, 1)) },
-    [4]  = { color = rl.WHITE, slope = slope('top',  vec.v2(1, 0), vec.v2(0, 1), vec.v2(1, 1)) },
-    [5]  = { color = rl.WHITE, slope = slope('top',  vec.v2(0, 0), vec.v2(1, 1), vec.v2(1, 0)) },
-    [6]  = { color = rl.WHITE, slope = slope('top',  vec.v2(0, 1), vec.v2(1, 0), vec.v2(0, 0)) },
-    [7]  = { color = rl.WHITE, slope = slope('top',  vec.v2(1, 0), vec.v2(0, 2), vec.v2(1, 2)) },
-    [8]  = { color = rl.WHITE, slope = slope('part', vec.v2(1, 0), vec.v2(0, 2), vec.v2(1, 2)) },
-    [9]  = { color = rl.WHITE, slope = slope('top',  vec.v2(1, 2), vec.v2(0, 0), vec.v2(0, 2)) },
-    [10] = { color = rl.WHITE, slope = slope('part', vec.v2(1, 2), vec.v2(0, 0), vec.v2(0, 2)) },
-    [11] = { color = rl.WHITE, slope = slope('top',  vec.v2(0, 2), vec.v2(1, 0), vec.v2(0, 0)) },
-    [12] = { color = rl.WHITE, slope = slope('part', vec.v2(0, 2), vec.v2(1, 0), vec.v2(0, 0)) },
-    [13] = { color = rl.WHITE, slope = slope('top',  vec.v2(0, 0), vec.v2(1, 2), vec.v2(1, 0)) },
-    [14] = { color = rl.WHITE, slope = slope('part', vec.v2(0, 0), vec.v2(1, 2), vec.v2(1, 0)) },
+    [3]  = { color = rl.WHITE, slope = slope(vec.v2( 0,  0), vec.v2(1, 1), vec.v2(0, 0), vec.v2(0, 1)) }, -- |\
+    [4]  = { color = rl.WHITE, slope = slope(vec.v2( 0,  0), vec.v2(1, 0), vec.v2(0, 1), vec.v2(1, 1)) }, -- /|
+    [5]  = { color = rl.WHITE, slope = slope(vec.v2( 0,  0), vec.v2(0, 0), vec.v2(1, 1), vec.v2(1, 0)) }, -- \|
+    [6]  = { color = rl.WHITE, slope = slope(vec.v2( 0,  0), vec.v2(0, 1), vec.v2(1, 0), vec.v2(0, 0)) }, -- |/
+    [7]  = { color = rl.WHITE, slope = slope(vec.v2( 0,  0), vec.v2(1, 0), vec.v2(0, 2), vec.v2(1, 2)) }, --  /|
+    [8]  = { color = rl.WHITE, slope = slope(vec.v2( 0,  1), vec.v2(1, 0), vec.v2(0, 2), vec.v2(1, 2)) }, -- / |
+    [9]  = { color = rl.WHITE, slope = slope(vec.v2( 0,  0), vec.v2(1, 2), vec.v2(0, 0), vec.v2(0, 2)) }, -- |\
+    [10] = { color = rl.WHITE, slope = slope(vec.v2( 0,  1), vec.v2(1, 2), vec.v2(0, 0), vec.v2(0, 2)) }, -- | \
+    [11] = { color = rl.WHITE, slope = slope(vec.v2( 0,  0), vec.v2(0, 2), vec.v2(1, 0), vec.v2(0, 0)) }, -- | /
+    [12] = { color = rl.WHITE, slope = slope(vec.v2( 0,  1), vec.v2(0, 2), vec.v2(1, 0), vec.v2(0, 0)) }, -- |/
+    [13] = { color = rl.WHITE, slope = slope(vec.v2( 0,  0), vec.v2(0, 0), vec.v2(1, 2), vec.v2(1, 0)) }, -- \ |
+    [14] = { color = rl.WHITE, slope = slope(vec.v2( 0,  1), vec.v2(0, 0), vec.v2(1, 2), vec.v2(1, 0)) }, --  \|
+    [15] = { color = rl.WHITE, slope = slope(vec.v2( 0,  0), vec.v2(2, 0), vec.v2(0, 1), vec.v2(2, 1)) }, --  /
+    [16] = { color = rl.WHITE, slope = slope(vec.v2( 1,  0), vec.v2(2, 0), vec.v2(0, 1), vec.v2(2, 1)) }, -- /_
 }
 
 local tilemap = {
@@ -181,17 +184,17 @@ local tilemap = {
     {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
     {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
     {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
-    {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
-    {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
-    {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
+    {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  4 },
+    {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  4,  0 },
+    {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  4,  0,  0 },
     {  0,  0,  0,  0,  0,  1,  1,  1,  1,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
-    {  0,  0,  0,  7,  9,  0,  0,  0,  0,  1,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
-    {  0,  0,  0,  8, 10,  0,  0,  0,  0,  2,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
-    {  0,  0,  0, 13, 11,  0,  0,  0,  0,  1,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
-    {  0,  0,  0, 14, 12,  1,  1,  1,  1,  2,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
-    {  0,  0,  0,  4,  3,  1,  0,  0,  0,  1,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
-    {  0,  0,  0,  5,  6,  1,  0,  0,  0,  2,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  0,  1,  0,  1,  0 },
-    {  1,  1,  1,  1,  1,  1,  0,  0,  0,  1,  1,  0,  0,  0,  0,  4,  1,  1,  1,  0,  1,  0,  1,  0,  1 },
+    {  0,  0,  0,  7,  9,  0,  0,  0,  0,  1,  0,  6,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
+    {  0,  0,  0,  8, 10,  0,  0,  0,  0,  2,  1,  0,  0,  0,  0,  0,  0,  0,  0,  4,  0,  0,  0,  0,  0 },
+    {  0,  0,  0, 13, 11,  0,  0,  0,  0,  1,  1,  0,  0,  0,  0,  0,  0,  0,  4,  0,  0,  0,  0,  0,  0 },
+    {  0,  0,  0, 14, 12,  1,  1,  1,  1,  2,  1,  0,  0,  0,  0,  0,  0,  4,  0,  0,  0,  0,  0,  0,  0 },
+    {  0,  0,  0,  4,  3,  1,  0,  0,  0,  1,  1,  0,  9,  0,  0,  0,  7,  0,  0,  0,  0,  0,  0,  0,  0 },
+    {  0,  0,  0,  5,  6,  1,  0,  0,  0,  2,  1,  0, 10,  0,  0,  0,  8,  0,  0,  1,  0,  1,  0,  1,  0 },
+    {  1,  1,  1,  1,  1,  1,  0,  0,  0,  1,  1,  3,  0,  0, 15, 16,  1,  1,  1,  0,  1,  0,  1,  0,  1 },
     {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  1,  1,  1,  1,  1,  0,  0,  0,  0,  0,  0,  0,  0 },
     {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
 }
@@ -327,13 +330,10 @@ while not rl.WindowShouldClose() do
     local old_on_ground = player.on_ground
     player.on_ground = false
     local callbacks = {
-        function () tprint("pushing left") end,
-        function () tprint("pushing right") end,
-        function () tprint("pushing up") end,
-        function ()
-            tprint("pushing down")
-            player.on_ground = true
-        end
+        function () end,
+        function () end,
+        function () end,
+        function () player.on_ground = true end
     }
 
     function get_tiles(points)
@@ -386,12 +386,10 @@ while not rl.WindowShouldClose() do
 
     -- 0 = up, left
     -- 1 = down, right
-    local got_slope = false
     for axis = 0, 1 do
         local fns = { vec.x, vec.y }
         local dim = fns[axis+1]
         local move = sign(dim(player.pos - old_pos))
-        tprint(fmt.tostring("got slope =", got_slope))
         for move = 0, 1 do
         --if move ~= 0 then
             --move = move == -1 and 0 or 1
@@ -404,9 +402,16 @@ while not rl.WindowShouldClose() do
             local min_tile = ops[move+1](dim, inits[move+1], possible_tiles)
             local tiles = filter(function (_, t) return dim(t) == dim(min_tile) end, possible_tiles)
             if #tiles > 0 then
+                tprint(fmt.tostring("axis = ", axis, ", move = ", move, ", tiles = ", tiles))
+                -- we must look at all tiles instead of tile[1]
+                -- if there are any slopes, only count them (if axis is up/down)
+                -- with the slopes, calculate the y for each one and take the min
+                -- also remember that we do not collide if vel vector and slope normal
+                -- don't cross each other (check dot of them)
                 local tile = tiles[1]
                 local tl = t2p(tile)
-                if not (is_slope(tilemap[tile.y][tile.x]) or got_slope) then
+                local index = tilemap[tile.y][tile.x]
+                if not (is_slope(index)) then
                     if not (axis == 0 and is_slope(tilemap[tile.y][tile.x-1])) then
                         local point = tl + (move == 1 and vec.zero or vec.one * TILE_SIZE)
                         local diff = { 0, dim(hitbox[1]) - dim(hitbox[2]) }
@@ -414,19 +419,20 @@ while not rl.WindowShouldClose() do
                         player.vel = vec.set_dim(player.vel, axis, 0)
                         player.pos = vec.set_dim(player.pos, axis, new_dim)
                     end
-                elseif axis == 0 then
-                    got_slope = true
-                else
-                    local x = player.pos.x + (move == 1 and TILE_SIZE or 0)
-                    local y = tl.y + TILE_SIZE - (x - tl.x) + 4
-                    --if player.pos.y >= y then
-                        player.pos.y = y - TILE_SIZE * 2
+                elseif axis == 1 then
+                    local info = tile_info[index]
+                    local to = tl - info.slope.origin * TILE_SIZE
+                    local slope_width  = math.abs(info.slope.points[1].x - info.slope.points[2].x)
+                    local slope_height = math.abs(info.slope.points[1].y - info.slope.points[2].y)
+                    local normal = info.slope.normal
+                    local sgn = -sign(normal.x * normal.y)
+                    local x = player.pos.x + TILE_SIZE/2 - to.x
+                    local y = (TILE_SIZE * slope_width * i2b(sgn == -1) + x * sgn) * slope_height/slope_width --, 0, TILE_SIZE * slope_height)
+                    if normal.y > 0 and player.pos.y               < to.y + y
+                    or normal.y < 0 and player.pos.y + TILE_SIZE*2 > to.y + y then
+                        player.pos.y = to.y + y - TILE_SIZE * 2 * i2b(normal.y < 0)
                         player.vel.y = 0
-                    --end
-                    -- callbacks[1 * 2 + 1 + 1]()
-                    --tprint(fmt.tostring("in slope", tile, tl))
-                    --local x = player.pos.x + (move == 1 and TILE_SIZE or 0)
-                    --player.pos.x = x - TILE_SIZE --vec.v2(x, y) - vec.v2(TILE_SIZE, TILE_SIZE*2)
+                    end
                 end
                 callbacks[axis * 2 + move + 1]()
             end
@@ -467,14 +473,15 @@ while not rl.WindowShouldClose() do
                 local info = tile_info[tile]
                 local orig = t2p(vec.v2(x, y))
                 if info.slope ~= nil then
-                    if info.slope.part == 'top' then
+                    if vec.eq(info.slope.origin, vec.zero) then
                         local points = map(function (_, p)
                             return orig + p * TILE_SIZE
                         end, info.slope.points)
                         rl.DrawTriangle(points[1], points[2], points[3], info.color)
                         local normal = info.slope.normal
-                        local slope_height = maxf(vec.y, -vec.huge, info.slope.points)
-                        local line_orig = orig + vec.v2(TILE_SIZE, TILE_SIZE * slope_height.y) / 2
+                        local slope_width  = math.abs(info.slope.points[1].x - info.slope.points[2].x)
+                        local slope_height = math.abs(info.slope.points[1].y - info.slope.points[2].y)
+                        local line_orig = orig + vec.v2(TILE_SIZE * slope_width, TILE_SIZE * slope_height) / 2
                         rl.DrawLineV(line_orig, line_orig + normal * TILE_SIZE, rl.RED)
                     end
                 else
