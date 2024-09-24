@@ -83,6 +83,8 @@ function maxf(f, init, t)
     return foldl(function (k, v, r) return f(v) > f(r) and v or r end, init, t)
 end
 
+function identity(x) return x end
+
 -- our game uses 16x16 tiles
 local TILE_SIZE = 16
 -- a screen will always be 25x20 tiles
@@ -297,6 +299,7 @@ while not rl.WindowShouldClose() do
             for x = start.x, endd.x do
                 t = vec.v2(x, y)
                 if not is_air(t) then
+                    -- and not is_slope(tilemap[t.y][t.x]) then
                     table.insert(ts, t)
                 end
             end
@@ -312,6 +315,41 @@ while not rl.WindowShouldClose() do
         end, from)
     end
 
+    -- we must look at all tiles instead of tile[1]
+    -- if there are any slopes, only count them (if axis is up/down)
+    -- with the slopes, calculate the y for each one and take the min
+    -- also remember that we do not collide if vel vector and slope normal
+    -- don't cross each other (check dot of them)
+    function get_dim(pos, axis, move, hitbox, dim, tile)
+        local tl = t2p(tile)
+        local index = tilemap[tile.y][tile.x]
+        local info = tile_info[index]
+        if not (is_slope(index)) then
+            if not (axis == 0 and is_slope(tilemap[tile.y][tile.x-1])) then
+                local point = tl + (move == 1 and vec.zero or vec.one * TILE_SIZE)
+                local diff = { 0, dim(hitbox[1]) - dim(hitbox[2]) }
+                return dim(point) + diff[move+1] - dim(PLAYER_HITBOX[1])
+            end
+        elseif axis == 1 then
+            local to = tl - info.slope.origin * TILE_SIZE
+            local slope_width  = math.abs(info.slope.points[1].x - info.slope.points[2].x)
+            local slope_height = math.abs(info.slope.points[1].y - info.slope.points[2].y)
+            local normal = info.slope.normal
+            local sgn = -sign(normal.x * normal.y)
+            local x = pos.x + TILE_SIZE/2 - to.x
+            -- if x < 0 or x > TILE_SIZE * slope_width then
+            -- return nil
+            -- end
+            local y = math.max((TILE_SIZE * slope_width * i2b(sgn == -1) + x * sgn) * slope_height/slope_width, 0)
+            if normal.y > 0 and pos.y               < to.y + y
+            or normal.y < 0 and pos.y + TILE_SIZE*2 > to.y + y then
+                return to.y + y - TILE_SIZE * 2 * i2b(normal.y < 0)
+            end
+            return nil
+        end
+        return nil
+    end
+
     -- 0 = up, left
     -- 1 = down, right
     for axis = 0, 1 do
@@ -325,40 +363,19 @@ while not rl.WindowShouldClose() do
             local hitboxes = get_hitboxes(hitbox, PLAYER_COLLISION_HITBOXES)
             local possible_tiles = get_tiles(hitboxes[axis+1][move+1])
             local ops, inits = {maxf, minf}, { -vec.huge, vec.huge }
-            local min_tile = ops[move+1](dim, inits[move+1], possible_tiles)
-            local tiles = filter(function (_, t) return dim(t) == dim(min_tile) end, possible_tiles)
+            local tiles = possible_tiles
+            -- local min_tile = ops[move+1](dim, inits[move+1], possible_tiles)
+            -- local tiles = filter(function (_, t) return dim(t) == dim(min_tile) end, possible_tiles)
             if #tiles > 0 then
-                tprint(fmt.tostring("axis = ", axis, ", move = ", move, ", tiles = ", tiles))
-                -- we must look at all tiles instead of tile[1]
-                -- if there are any slopes, only count them (if axis is up/down)
-                -- with the slopes, calculate the y for each one and take the min
-                -- also remember that we do not collide if vel vector and slope normal
-                -- don't cross each other (check dot of them)
-                local tile = tiles[1]
-                local tl = t2p(tile)
-                local index = tilemap[tile.y][tile.x]
-                if not (is_slope(index)) then
-                    if not (axis == 0 and is_slope(tilemap[tile.y][tile.x-1])) then
-                        local point = tl + (move == 1 and vec.zero or vec.one * TILE_SIZE)
-                        local diff = { 0, dim(hitbox[1]) - dim(hitbox[2]) }
-                        local new_dim = dim(point) + diff[move+1] - dim(PLAYER_HITBOX[1])
-                        player.vel = vec.set_dim(player.vel, axis, 0)
-                        player.pos = vec.set_dim(player.pos, axis, new_dim)
-                    end
-                elseif axis == 1 then
-                    local info = tile_info[index]
-                    local to = tl - info.slope.origin * TILE_SIZE
-                    local slope_width  = math.abs(info.slope.points[1].x - info.slope.points[2].x)
-                    local slope_height = math.abs(info.slope.points[1].y - info.slope.points[2].y)
-                    local normal = info.slope.normal
-                    local sgn = -sign(normal.x * normal.y)
-                    local x = player.pos.x + TILE_SIZE/2 - to.x
-                    local y = (TILE_SIZE * slope_width * i2b(sgn == -1) + x * sgn) * slope_height/slope_width --, 0, TILE_SIZE * slope_height)
-                    if normal.y > 0 and player.pos.y               < to.y + y
-                    or normal.y < 0 and player.pos.y + TILE_SIZE*2 > to.y + y then
-                        player.pos.y = to.y + y - TILE_SIZE * 2 * i2b(normal.y < 0)
-                        player.vel.y = 0
-                    end
+                local inits2 = { -math.huge, math.huge }
+                local dims_not_filtered = map(function (_, tile)
+                    return get_dim(player.pos, axis, move, hitbox, dim, tile)
+                end, tiles)
+                local dims = filter(function (_, v) return v ~= nil end, dims_not_filtered)
+                local d = ops[move+1](identity, inits2[move+1], dims)
+                if math.abs(d) ~= math.huge then
+                    player.vel = vec.set_dim(player.vel, axis, 0)
+                    player.pos = vec.set_dim(player.pos, axis, d)
                 end
                 callbacks[axis * 2 + move + 1]()
             end
@@ -440,3 +457,5 @@ while not rl.WindowShouldClose() do
     tprint("")
 end
 
+-- if in our list of tiles we have at least one slope, then eliminate any tile
+-- that is left or right to the higher end of a slope
