@@ -91,7 +91,7 @@ local TILE_SIZE = 16
 local SCREEN_WIDTH = 25
 local SCREEN_HEIGHT = 20
 -- scale window up to this number
-local SCALE = 2
+local SCALE = 1
 -- set this to true for free movement instead of being bound by gravity
 local FREE_MOVEMENT = false
 local FREE_MOVEMENT_SPEED = 2
@@ -150,8 +150,8 @@ local tilemap = {
     {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
     {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  4 },
     {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  4,  0 },
-    {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  4,  0,  0 },
-    {  0,  0,  0,  0,  0,  1,  1,  1,  1,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
+    {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  6,  0,  0,  0,  0,  0,  0,  0,  0,  4,  0,  0 },
+    {  0,  0,  0,  0,  0,  1,  1,  1,  1,  0,  0,  0,  6,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
     {  0,  0,  0,  7,  9,  0,  0,  0,  0,  1,  0,  6,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
     {  0,  0,  0,  8, 10,  0,  0,  0,  0,  2,  1,  0,  0,  0,  0,  0,  0,  0,  0,  4,  0,  0,  0,  0,  0 },
     {  0,  0,  0, 13, 11,  0,  0,  0,  0,  1,  1,  0,  0,  0,  0,  0,  0,  0,  4,  0,  0,  0,  0,  0,  0 },
@@ -299,7 +299,6 @@ while not rl.WindowShouldClose() do
             for x = start.x, endd.x do
                 t = vec.v2(x, y)
                 if not is_air(t) then
-                    -- and not is_slope(tilemap[t.y][t.x]) then
                     table.insert(ts, t)
                 end
             end
@@ -315,19 +314,19 @@ while not rl.WindowShouldClose() do
         end, from)
     end
 
-    -- we must look at all tiles instead of tile[1]
-    -- if there are any slopes, only count them (if axis is up/down)
-    -- with the slopes, calculate the y for each one and take the min
-    -- also remember that we do not collide if vel vector and slope normal
+    -- remember that we shouldn't collide if vel vector and slope normal
     -- don't cross each other (check dot of them)
+    -- if in our list of tiles we have at least one slope, then eliminate any tile
+    -- that is left or right to the higher end of a slope
     function get_dim(pos, axis, move, hitbox, dim, tile)
         local tl = t2p(tile)
         local index = tilemap[tile.y][tile.x]
         local info = tile_info[index]
         if not (is_slope(index)) then
             if not (axis == 0 and is_slope(tilemap[tile.y][tile.x-1])) then
-                local point = tl + (move == 1 and vec.zero or vec.one * TILE_SIZE)
+                local points = { vec.one, vec.zero }
                 local diff = { 0, dim(hitbox[1]) - dim(hitbox[2]) }
+                local point = tl + points[move+1] * TILE_SIZE
                 return dim(point) + diff[move+1] - dim(PLAYER_HITBOX[1])
             end
         elseif axis == 1 then
@@ -337,10 +336,21 @@ while not rl.WindowShouldClose() do
             local normal = info.slope.normal
             local sgn = -sign(normal.x * normal.y)
             local x = pos.x + TILE_SIZE/2 - to.x
-            -- if x < 0 or x > TILE_SIZE * slope_width then
-            -- return nil
-            -- end
-            local y = math.max((TILE_SIZE * slope_width * i2b(sgn == -1) + x * sgn) * slope_height/slope_width, 0)
+
+            local t = rlerp(info.slope.points[1].x, info.slope.points[2].x, x / 16 * slope_width)
+            local y = lerp(info.slope.points[1].y, info.slope.points[2].y, t)
+            if y > 1.0 then
+                return nil
+            end
+            y = y * TILE_SIZE * slope_height
+
+            if false then
+                local y = math.max((TILE_SIZE * slope_width * i2b(sgn == -1) + x * sgn) * slope_height/slope_width, 0)
+                if y > TILE_SIZE * slope_height then
+                    return nil
+                end
+            end
+            -- check if the player is actually inside the slope
             if normal.y > 0 and pos.y               < to.y + y
             or normal.y < 0 and pos.y + TILE_SIZE*2 > to.y + y then
                 return to.y + y - TILE_SIZE * 2 * i2b(normal.y < 0)
@@ -457,5 +467,3 @@ while not rl.WindowShouldClose() do
     tprint("")
 end
 
--- if in our list of tiles we have at least one slope, then eliminate any tile
--- that is left or right to the higher end of a slope
