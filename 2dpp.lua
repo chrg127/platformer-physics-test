@@ -13,6 +13,7 @@ function vec.normalize(v) return rl.Vector2Normalize(v) end
 function vec.rotate(v, angle) return rl.Vector2Rotate(v, angle) end
 
 function vec.floor(v) return vec.v2(math.floor(v.x), math.floor(v.y)) end
+function vec.abs(v) return vec.v2(math.abs(v.x), math.abs(v.y)) end
 function vec.eq(a, b) return rl.Vector2Equals(a, b) == 1 end
 
 function vec.x(v) return v.x end
@@ -32,9 +33,10 @@ function rec.new(pos, size) return rl.new("Rectangle", pos.x, pos.y, size.x, siz
 function lt(a, b) return a < b end
 function gt(a, b) return a > b end
 function sign(x) return x < 0 and -1 or x > 0 and 1 or 0 end
-function i2b(exp) return exp and 1 or 0 end
+function b2i(exp) return exp and 1 or 0 end
 function clamp(x, min, max) return rl.Clamp(x, min, max) end
 function lerp(a, b, t) return rl.Lerp(a, b, t) end
+function identity(x) return x end
 
 function rlerp(a, b, v)
     return (v - a) / (b - a)
@@ -83,7 +85,13 @@ function maxf(f, init, t)
     return foldl(function (k, v, r) return f(v) > f(r) and v or r end, init, t)
 end
 
-function identity(x) return x end
+function partition(pred, t)
+    local r1, r2 = {}, {}
+    for k, v in pairs(t) do
+        table.insert(pred(k, v) and r1 or r2, v)
+    end
+    return r1, r2
+end
 
 -- our game uses 16x16 tiles
 local TILE_SIZE = 16
@@ -91,7 +99,7 @@ local TILE_SIZE = 16
 local SCREEN_WIDTH = 25
 local SCREEN_HEIGHT = 20
 -- scale window up to this number
-local SCALE = 1
+local SCALE = 2
 -- set this to true for free movement instead of being bound by gravity
 local FREE_MOVEMENT = false
 local FREE_MOVEMENT_SPEED = 2
@@ -168,7 +176,7 @@ function is_air(t)
 end
 
 function is_slope(ti)
-    return ti >= 3
+    return ti ~= nil and ti >= 3
 end
 
 function get_triangle_points(t)
@@ -318,48 +326,6 @@ while not rl.WindowShouldClose() do
     -- don't cross each other (check dot of them)
     -- if in our list of tiles we have at least one slope, then eliminate any tile
     -- that is left or right to the higher end of a slope
-    function get_dim(pos, axis, move, hitbox, dim, tile)
-        local tl = t2p(tile)
-        local index = tilemap[tile.y][tile.x]
-        local info = tile_info[index]
-        if not (is_slope(index)) then
-            if not (axis == 0 and is_slope(tilemap[tile.y][tile.x-1])) then
-                local points = { vec.one, vec.zero }
-                local diff = { 0, dim(hitbox[1]) - dim(hitbox[2]) }
-                local point = tl + points[move+1] * TILE_SIZE
-                return dim(point) + diff[move+1] - dim(PLAYER_HITBOX[1])
-            end
-        elseif axis == 1 then
-            local to = tl - info.slope.origin * TILE_SIZE
-            local slope_width  = math.abs(info.slope.points[1].x - info.slope.points[2].x)
-            local slope_height = math.abs(info.slope.points[1].y - info.slope.points[2].y)
-            local normal = info.slope.normal
-            local sgn = -sign(normal.x * normal.y)
-            local x = pos.x + TILE_SIZE/2 - to.x
-
-            local t = rlerp(info.slope.points[1].x, info.slope.points[2].x, x / 16 * slope_width)
-            local y = lerp(info.slope.points[1].y, info.slope.points[2].y, t)
-            if y > 1.0 then
-                return nil
-            end
-            y = y * TILE_SIZE * slope_height
-
-            if false then
-                local y = math.max((TILE_SIZE * slope_width * i2b(sgn == -1) + x * sgn) * slope_height/slope_width, 0)
-                if y > TILE_SIZE * slope_height then
-                    return nil
-                end
-            end
-            -- check if the player is actually inside the slope
-            if normal.y > 0 and pos.y               < to.y + y
-            or normal.y < 0 and pos.y + TILE_SIZE*2 > to.y + y then
-                return to.y + y - TILE_SIZE * 2 * i2b(normal.y < 0)
-            end
-            return nil
-        end
-        return nil
-    end
-
     -- 0 = up, left
     -- 1 = down, right
     for axis = 0, 1 do
@@ -370,19 +336,75 @@ while not rl.WindowShouldClose() do
         --if move ~= 0 then
             --move = move == -1 and 0 or 1
             local hitbox = map(function (_, v) return v + player.pos end, PLAYER_HITBOX)
-            local hitboxes = get_hitboxes(hitbox, PLAYER_COLLISION_HITBOXES)
-            local possible_tiles = get_tiles(hitboxes[axis+1][move+1])
-            local ops, inits = {maxf, minf}, { -vec.huge, vec.huge }
+            local boxes = get_hitboxes(hitbox, PLAYER_COLLISION_HITBOXES)
+            local possible_tiles = get_tiles(boxes[axis+1][move+1])
             local tiles = possible_tiles
+            -- local ops, inits = {maxf, minf}, { -vec.huge, vec.huge }
             -- local min_tile = ops[move+1](dim, inits[move+1], possible_tiles)
             -- local tiles = filter(function (_, t) return dim(t) == dim(min_tile) end, possible_tiles)
             if #tiles > 0 then
-                local inits2 = { -math.huge, math.huge }
-                local dims_not_filtered = map(function (_, tile)
-                    return get_dim(player.pos, axis, move, hitbox, dim, tile)
-                end, tiles)
-                local dims = filter(function (_, v) return v ~= nil end, dims_not_filtered)
-                local d = ops[move+1](identity, inits2[move+1], dims)
+                function get_tile_dim(tile, has_slopes)
+                    local tl = t2p(tile)
+                    local index = tilemap[tile.y][tile.x]
+                    local info = tile_info[index]
+                    if not (axis == 0 and is_slope(tilemap[tile.y][tile.x-1])) then
+                        local points = { vec.one, vec.zero }
+                        local diff = { 0, dim(PLAYER_HITBOX[1]) - dim(PLAYER_HITBOX[2]) }
+                        local point = tl + points[move+1] * TILE_SIZE
+                        return dim(point) + diff[move+1] - dim(PLAYER_HITBOX[1])
+                    end
+                end
+
+                function get_slope_dim(tile)
+                    if tile == nil then
+                        return nil
+                    end
+                    local tl = t2p(tile)
+                    local index = tilemap[tile.y][tile.x]
+                    local info = tile_info[index]
+                    if axis == 1 then
+                        local to = tl - info.slope.origin * TILE_SIZE
+                        local slope_size  = vec.abs(info.slope.points[1] - info.slope.points[2])
+                        local normal = info.slope.normal
+                        local x = hitbox[1].x + (hitbox[2].x - hitbox[1].x)/2 - to.x
+
+                        local t = rlerp(info.slope.points[1].x, info.slope.points[2].x, x / 16)
+                        local y =  lerp(info.slope.points[1].y, info.slope.points[2].y, t)
+                        y = normal.y < 0 and math.max(y, 0)
+                         or normal.y > 0 and math.min(y, slope_size.y)
+                         or y
+                        if normal.y < 0 and y > slope_size.y or normal.y > 0 and y < 0 then
+                            return nil
+                        end
+
+                        local d = to.y + y * TILE_SIZE
+                        -- check if the player is actually inside the slope
+                        if normal.y < 0 and player.pos.y + PLAYER_HITBOX[2].y - PLAYER_HITBOX[1].y > d
+                        or normal.y > 0 and player.pos.y                                           < d then
+                            return d - TILE_SIZE * 2 * b2i(normal.y < 0)
+                        end
+                    end
+                end
+
+                function is_on_center(tile)
+                    local tl = t2p(tile)
+                    local index = tilemap[tile.y][tile.x]
+                    local info = tile_info[index]
+                    local to = tl - info.slope.origin * TILE_SIZE
+                    local x = hitbox[1].x + (hitbox[2].x - hitbox[1].x)/2 - to.x
+                    return x > 0 and x < hitbox[2].x - hitbox[1].x
+                end
+
+                local slopes, others = partition(function (_, t) return is_slope(tilemap[t.y][t.x]) end, tiles)
+                local slope_d = #slopes > 1 and get_slope_dim(filter(function (_, t) return is_on_center(t) end, slopes)[1])
+                             or #slopes > 0 and get_slope_dim(slopes[1])
+                             or math.huge
+                local dims = filter(
+                    function (_, v) return v ~= nil end,
+                    map(function (_, tile) return get_tile_dim(tile) end, others))
+                table.insert(dims, slope_d)
+                local ops, inits = {maxf, minf}, { -math.huge, math.huge }
+                local d = ops[move+1](identity, inits[move+1], dims)
                 if math.abs(d) ~= math.huge then
                     player.vel = vec.set_dim(player.vel, axis, 0)
                     player.pos = vec.set_dim(player.pos, axis, d)
