@@ -160,14 +160,14 @@ local tilemap = {
     {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  4,  0 },
     {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  6,  0,  0,  0,  0,  0,  0,  0,  0,  4,  0,  0 },
     {  0,  0,  0,  0,  0,  1,  1,  1,  1,  0,  0,  0,  6,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
-    {  0,  0,  0,  7,  9,  0,  0,  0,  0,  1,  0,  6,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
-    {  0,  0,  0,  8, 10,  0,  0,  0,  0,  2,  1,  0,  0,  0,  0,  0,  0,  0,  0,  4,  0,  0,  0,  0,  0 },
-    {  0,  0,  0, 13, 11,  0,  0,  0,  0,  1,  1,  0,  0,  0,  0,  0,  0,  0,  4,  0,  0,  0,  0,  0,  0 },
-    {  0,  0,  0, 14, 12,  1,  1,  1,  1,  2,  1,  0,  0,  0,  0,  0,  0,  4,  0,  0,  0,  0,  0,  0,  0 },
-    {  0,  0,  0,  4,  3,  1,  0,  0,  0,  1,  1,  0,  9,  0,  0,  0,  7,  0,  0,  0,  0,  0,  0,  0,  0 },
-    {  0,  0,  0,  5,  6,  1,  0,  0,  0,  2,  1,  0, 10,  0,  0,  0,  8,  0,  0,  1,  0,  1,  0,  1,  0 },
-    {  1,  1,  1,  1,  1,  1,  0,  0,  0,  1,  1,  3,  0,  0, 15, 16,  1,  1,  1,  0,  1,  0,  1,  0,  1 },
-    {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  1,  1,  1,  1,  1,  0,  0,  0,  0,  0,  0,  0,  0 },
+    {  0,  0,  0,  7,  9,  0,  0,  0,  0,  1,  1,  6,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
+    {  0,  0,  0,  8, 10,  0,  0,  0,  0,  2,  0,  0,  0,  0,  0,  0,  0,  0,  0,  4,  0,  0,  0,  0,  0 },
+    {  0,  0,  0, 13, 11,  0,  0,  0,  0,  1,  0,  0,  9,  0,  0,  0,  0,  0,  4,  0,  0,  0,  0,  0,  0 },
+    {  0,  0,  0, 14, 12,  1,  1,  1,  1,  2,  0,  0, 10,  0,  0,  0,  0,  7,  0,  0,  0,  0,  0,  0,  0 },
+    {  0,  0,  0,  4,  3,  1,  0,  0,  0,  1,  0,  0,  0,  0,  0,  0,  0,  8,  0,  0,  0,  0,  0,  0,  0 },
+    {  0,  0,  0,  5,  6,  1,  0,  0,  0,  2,  0,  0,  0,  0,  0,  0,  0,  1,  0,  1,  0,  1,  0,  1,  0 },
+    {  1,  1,  1,  1,  1,  1,  0,  0,  0,  1,  1,  3,  0,  0,  0,  4,  1,  1,  1,  0,  1,  0,  1,  0,  1 },
+    {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  1, 15, 16,  1,  1,  0,  0,  0,  0,  0,  0,  0,  0 },
     {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
 }
 
@@ -177,6 +177,10 @@ end
 
 function is_slope(ti)
     return ti ~= nil and ti >= 3
+end
+
+function is_slope_facing(ti, sgn)
+    return is_slope(ti) and sign(tile_info[ti].slope.normal.x) == sgn
 end
 
 function get_triangle_points(t)
@@ -337,36 +341,33 @@ while not rl.WindowShouldClose() do
             --move = move == -1 and 0 or 1
             local hitbox = map(function (_, v) return v + player.pos end, PLAYER_HITBOX)
             local boxes = get_hitboxes(hitbox, PLAYER_COLLISION_HITBOXES)
-            local possible_tiles = get_tiles(boxes[axis+1][move+1])
-            local tiles = possible_tiles
-            -- local ops, inits = {maxf, minf}, { -vec.huge, vec.huge }
-            -- local min_tile = ops[move+1](dim, inits[move+1], possible_tiles)
-            -- local tiles = filter(function (_, t) return dim(t) == dim(min_tile) end, possible_tiles)
+            local tiles = get_tiles(boxes[axis+1][move+1])
             if #tiles > 0 then
                 function get_tile_dim(tile, has_slopes)
-                    local tl = t2p(tile)
-                    local index = tilemap[tile.y][tile.x]
-                    local info = tile_info[index]
-                    if not (axis == 0 and is_slope(tilemap[tile.y][tile.x-1])) then
-                        local points = { vec.one, vec.zero }
-                        local diff = { 0, dim(PLAYER_HITBOX[1]) - dim(PLAYER_HITBOX[2]) }
-                        local point = tl + points[move+1] * TILE_SIZE
-                        return dim(point) + diff[move+1] - dim(PLAYER_HITBOX[1])
+                    if (has_slopes or axis == 0)
+                    and (is_slope_facing(tilemap[tile.y][tile.x-1], -1)
+                      or is_slope_facing(tilemap[tile.y][tile.x+1],  1)) then
+                        return math.huge
                     end
+                    local info = tile_info[tilemap[tile.y][tile.x]]
+                    local points = { vec.one, vec.zero }
+                    local diff = { 0, dim(PLAYER_HITBOX[1]) - dim(PLAYER_HITBOX[2]) }
+                    local point = t2p(tile) + points[move+1] * TILE_SIZE
+                    return dim(point) + diff[move+1] - dim(PLAYER_HITBOX[1])
                 end
 
                 function get_slope_dim(tile)
+                    tprint(fmt.tostring("axis = ", axis, "move = ", move, "slope tile = ", tile))
                     if tile == nil then
-                        return nil
+                        return math.huge
                     end
                     local tl = t2p(tile)
-                    local index = tilemap[tile.y][tile.x]
-                    local info = tile_info[index]
+                    local info = tile_info[tilemap[tile.y][tile.x]]
                     if axis == 1 then
                         local to = tl - info.slope.origin * TILE_SIZE
                         local slope_size  = vec.abs(info.slope.points[1] - info.slope.points[2])
                         local normal = info.slope.normal
-                        local x = hitbox[1].x + (hitbox[2].x - hitbox[1].x)/2 - to.x
+                        local x = hitbox[1].x + (hitbox[2] - hitbox[1]).x/2 - to.x
 
                         local t = rlerp(info.slope.points[1].x, info.slope.points[2].x, x / 16)
                         local y =  lerp(info.slope.points[1].y, info.slope.points[2].y, t)
@@ -384,25 +385,26 @@ while not rl.WindowShouldClose() do
                             return d - TILE_SIZE * 2 * b2i(normal.y < 0)
                         end
                     end
+                    return math.huge
                 end
 
-                function is_on_center(tile)
-                    local tl = t2p(tile)
-                    local index = tilemap[tile.y][tile.x]
-                    local info = tile_info[index]
-                    local to = tl - info.slope.origin * TILE_SIZE
-                    local x = hitbox[1].x + (hitbox[2].x - hitbox[1].x)/2 - to.x
-                    return x > 0 and x < hitbox[2].x - hitbox[1].x
+                function is_on_center(_, tile)
+                    local info = tile_info[tilemap[tile.y][tile.x]]
+                    local to = t2p(tile) - info.slope.origin * TILE_SIZE
+                    local x = hitbox[1].x + (hitbox[2] - hitbox[1]).x/2 - to.x
+                    local slope_size  = vec.abs(info.slope.points[1] - info.slope.points[2])
+                    return x > 0 and x < slope_size.x * TILE_SIZE
                 end
 
-                local slopes, others = partition(function (_, t) return is_slope(tilemap[t.y][t.x]) end, tiles)
-                local slope_d = #slopes > 1 and get_slope_dim(filter(function (_, t) return is_on_center(t) end, slopes)[1])
-                             or #slopes > 0 and get_slope_dim(slopes[1])
-                             or math.huge
-                local dims = filter(
-                    function (_, v) return v ~= nil end,
-                    map(function (_, tile) return get_tile_dim(tile) end, others))
+                local slopes, others = partition(function (_, t)
+                    return is_slope(tilemap[t.y][t.x])
+                end, tiles)
+                local dims = map(function (_, tile) return get_tile_dim(tile, #slopes > 0) end, others)
+                local slope_d =    #slopes > 1 and get_slope_dim(filter(is_on_center, slopes)[1])
+                                or #slopes > 0 and get_slope_dim(slopes[1])
+                                or math.huge
                 table.insert(dims, slope_d)
+                dims = filter(function (_, v) return v ~= math.huge end, dims)
                 local ops, inits = {maxf, minf}, { -math.huge, math.huge }
                 local d = ops[move+1](identity, inits[move+1], dims)
                 if math.abs(d) ~= math.huge then
@@ -471,7 +473,7 @@ while not rl.WindowShouldClose() do
     rl.EndMode2D()
 
     for _, line in ipairs(lines_to_print) do
-        rl.DrawText(line[1], 5, line[2], 10, rl.GREEN)
+        rl.DrawText(line[1], 5, line[2], 10, rl.GRAY)
     end
 
     rl.EndTextureMode()
