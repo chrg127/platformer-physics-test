@@ -85,4 +85,16 @@ function identity(x) return x end
                     rl.DrawLineV(line_orig, line_orig + normal * TILE_SIZE, rl.RED)
 
             local sgn = -sign(normal.x * normal.y)
+
 -- local y = math.max((TILE_SIZE * slope_width * i2b(sgn == -1) + x * sgn) * slope_height/slope_width, 0)
+
+function append(...)
+    local r = {}
+    for _, t in ipairs({...}) do
+        for _, v in ipairs(t) do
+            table.insert(r, v)
+        end
+    end
+    return r
+end
+
