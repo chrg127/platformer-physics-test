@@ -11,6 +11,7 @@ function vec.v2(x, y) return rl.new("Vector2", x, y) end
 function vec.normalize(v) return rl.Vector2Normalize(v) end
 -- function vec.length(v) return rl.Vector2Length(v) end
 function vec.rotate(v, angle) return rl.Vector2Rotate(v, angle) end
+function vec.dot(a, b) return rl.Vector2DotProduct(a, b) end
 
 function vec.floor(v) return vec.v2(math.floor(v.x), math.floor(v.y)) end
 function vec.abs(v) return vec.v2(math.abs(v.x), math.abs(v.y)) end
@@ -185,7 +186,7 @@ local tilemap = {
     {  0,  0,  0, 13, 11,  0,  0,  0,  0,  1,  0,  1,  9,  0,  0,  0,  0,  0,  4,  0,  0,  0,  0,  0,  0 },
     {  0,  0,  0, 14, 12,  1,  1,  1,  1,  2,  0,  0, 10,  0,  0,  0,  0,  7,  0,  0,  0,  0,  0,  0,  0 },
     {  0,  0,  0,  4,  3,  1,  0,  0,  0,  1,  0,  1,  0,  0,  0,  0,  0,  8,  0,  0,  0,  0,  0,  0,  0 },
-    {  1,  1,  0,  5,  6,  1,  0,  0,  0,  2,  0,  0,  0,  0,  0,  0,  0,  1,  0,  1,  0,  1,  0,  1,  0 },
+    {  1,  1,  1,  5,  6,  1,  0,  0,  0,  2,  0,  0,  0,  0,  0,  0,  0,  1,  1,  1,  1,  1,  0,  1,  0 },
     {  1,  1,  1,  1,  1,  1,  0,  0,  0,  1,  1,  3,  0,  0,  0,  4,  1,  1,  1,  0,  1,  0,  1,  0,  1 },
     {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  1, 15, 16,  1,  1,  0,  0,  0,  0,  0,  0,  0,  0 },
     {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
@@ -319,6 +320,7 @@ while not rl.WindowShouldClose() do
     end
 
     local old_pos = player.pos
+    local old_vel = player.vel
     if not FREE_MOVEMENT then
         player.pos = player.pos + player.vel * dt
     else
@@ -358,13 +360,15 @@ while not rl.WindowShouldClose() do
         end, from)
     end
 
-    function collide_tiles(pos, hitbox_unit, collision_boxes)
+    function collide_tiles(pos, vel, old_pos, hitbox_unit, collision_boxes)
         local size = hitbox_unit[2] - hitbox_unit[1]
         local result = {}
         for axis = 0, 1 do
+            local direction = vec.normalize(pos - old_pos)
             local dim = axis == 0 and vec.x or vec.y
             local move = sign(dim(player.pos - old_pos))
             for move = 0, 1 do
+                local old_hitbox = map(function (v) return v + old_pos end, hitbox_unit)
                 local hitbox = map(function (v) return v + pos end, hitbox_unit)
                 local boxes = get_hitboxes(hitbox, collision_boxes)
                 local tiles = get_tiles(boxes[axis+1][move+1])
@@ -384,8 +388,17 @@ while not rl.WindowShouldClose() do
 
                     function get_slope_dim(tile)
                         local info       = tile_info[tilemap[tile.y][tile.x] ]
+                        local dot = vec.dot(direction, info.slope.normal)
+                        -- fmt.print("direction = ", direction)
+                        -- print("dot = " .. tostring(dot))
+                        if dot >= 0 then
+                            return math.huge
+                        end
                         local to         = slope_origin(tile, info)
                         local dir        = b2i(info.slope.normal.y < 0) + 1
+                        if dir ~= move+1 then
+                            return math.huge
+                        end
                         local less, greater, min = { gt, lt }, { lt, gt }, { math.min, math.max }
                         local vals_lt, vals_gt   = { info.slope.size.y, 0 }, { 0, info.slope.size.y, }
                         local yu = slope_diag_point(to, info, hitbox[1].x + size.x/2, vec.x, vec.y)
@@ -398,6 +411,9 @@ while not rl.WindowShouldClose() do
                         if less[dir](hitbox[dir].y, y) then
                             return math.huge
                         end
+                        --if less[dir](old_hitbox[dir].y, y) or old_hitbox[dir].y == y then
+                        --    
+                        --end
                         return y - size.y * (dir - 1)
                     end
 
@@ -471,7 +487,9 @@ while not rl.WindowShouldClose() do
         return pos, result
     end
 
-    local pos, collision_tiles = collide_tiles(player.pos, PLAYER_HITBOX, PLAYER_COLLISION_HITBOXES)
+    local pos, collision_tiles = collide_tiles(
+        player.pos, player.vel, old_pos, PLAYER_HITBOX, PLAYER_COLLISION_HITBOXES
+    )
     player.pos = pos
     for _, dim in ipairs{ 0, 1 } do
         if findf(function (v) return vec.dim(v.dir, dim) ~= 0 end, collision_tiles) then
@@ -541,6 +559,11 @@ while not rl.WindowShouldClose() do
             rl.DrawRectangleLinesEx(rec.new(hitbox[1], hitbox[2] - hitbox[1]), 1.0, rl.BLUE)
         end
     end
+
+    local direction = vec.normalize(player.pos - old_pos)
+    local start_pos = player.pos + (PLAYER_HITBOX[2] - PLAYER_HITBOX[1])/2
+    --rl.DrawLineV(start_pos, start_pos + direction * 50, rl.GREEN)
+    --rl.DrawLineV(start_pos, start_pos + vec.normalize(old_vel) * 50, rl.YELLOW)
 
     rl.EndMode2D()
 
