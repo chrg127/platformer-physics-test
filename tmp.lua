@@ -98,3 +98,8 @@ function append(...)
     return r
 end
 
+                        -- rl.DrawLineV(
+                        --     orig + vec.v2(TILE_SIZE, TILE_SIZE) / 2 + vec.rotate(n * math.sqrt(2)/2 * TILE_SIZE,  math.pi/4),
+                        --     orig + vec.v2(TILE_SIZE, TILE_SIZE) / 2 + vec.rotate(n * math.sqrt(2)/2 * TILE_SIZE, -math.pi/4),
+                        --     rl.RED
+                        -- )

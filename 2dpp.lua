@@ -149,31 +149,33 @@ end
 
 function slope(origin, p1, p2, p3)
     return {
-        origin = origin,
-        points = { p1, p2, p3 },
-        normal = get_normal(p1, p2),
-        size   = vec.abs(p1 - p2)
+        slope = {
+            origin = origin,
+            points = { p1, p2, p3 },
+            size   = vec.abs(p1 - p2)
+        },
+        normals = { get_normal(p1, p2) }
     }
 end
 
 -- store info about a tile here, such as color, shape, normals, etc.
 local tile_info = {
-    [1]  = { color = rl.WHITE, },
-    [2]  = { color = rl.RED, },
-    [3]  = { color = rl.WHITE, slope = slope(vec.v2( 0,  0), vec.v2(1, 1), vec.v2(0, 0), vec.v2(0, 1)) }, -- |\
-    [4]  = { color = rl.WHITE, slope = slope(vec.v2( 0,  0), vec.v2(1, 0), vec.v2(0, 1), vec.v2(1, 1)) }, -- /|
-    [5]  = { color = rl.WHITE, slope = slope(vec.v2( 0,  0), vec.v2(0, 0), vec.v2(1, 1), vec.v2(1, 0)) }, -- \|
-    [6]  = { color = rl.WHITE, slope = slope(vec.v2( 0,  0), vec.v2(0, 1), vec.v2(1, 0), vec.v2(0, 0)) }, -- |/
-    [7]  = { color = rl.WHITE, slope = slope(vec.v2( 0,  0), vec.v2(1, 0), vec.v2(0, 2), vec.v2(1, 2)) }, --  /|
-    [8]  = { color = rl.WHITE, slope = slope(vec.v2( 0,  1), vec.v2(1, 0), vec.v2(0, 2), vec.v2(1, 2)) }, -- / |
-    [9]  = { color = rl.WHITE, slope = slope(vec.v2( 0,  0), vec.v2(1, 2), vec.v2(0, 0), vec.v2(0, 2)) }, -- |\
-    [10] = { color = rl.WHITE, slope = slope(vec.v2( 0,  1), vec.v2(1, 2), vec.v2(0, 0), vec.v2(0, 2)) }, -- | \
-    [11] = { color = rl.WHITE, slope = slope(vec.v2( 0,  0), vec.v2(0, 2), vec.v2(1, 0), vec.v2(0, 0)) }, -- | /
-    [12] = { color = rl.WHITE, slope = slope(vec.v2( 0,  1), vec.v2(0, 2), vec.v2(1, 0), vec.v2(0, 0)) }, -- |/
-    [13] = { color = rl.WHITE, slope = slope(vec.v2( 0,  0), vec.v2(0, 0), vec.v2(1, 2), vec.v2(1, 0)) }, -- \ |
-    [14] = { color = rl.WHITE, slope = slope(vec.v2( 0,  1), vec.v2(0, 0), vec.v2(1, 2), vec.v2(1, 0)) }, --  \|
-    [15] = { color = rl.WHITE, slope = slope(vec.v2( 0,  0), vec.v2(2, 0), vec.v2(0, 1), vec.v2(2, 1)) }, --  /
-    [16] = { color = rl.WHITE, slope = slope(vec.v2( 1,  0), vec.v2(2, 0), vec.v2(0, 1), vec.v2(2, 1)) }, -- /_
+    [1]  = { normals = { vec.v2(1, 0), vec.v2(-1, 0), vec.v2(0, 1), vec.v2(0, -1) } },
+    [2]  = { normals = { vec.v2(0, -1) } },
+    [3]  = slope(vec.v2( 0,  0), vec.v2(1, 1), vec.v2(0, 0), vec.v2(0, 1)), -- |\
+    [4]  = slope(vec.v2( 0,  0), vec.v2(1, 0), vec.v2(0, 1), vec.v2(1, 1)), -- /|
+    [5]  = slope(vec.v2( 0,  0), vec.v2(0, 0), vec.v2(1, 1), vec.v2(1, 0)), -- \|
+    [6]  = slope(vec.v2( 0,  0), vec.v2(0, 1), vec.v2(1, 0), vec.v2(0, 0)), -- |/
+    [7]  = slope(vec.v2( 0,  0), vec.v2(1, 0), vec.v2(0, 2), vec.v2(1, 2)), --  /|
+    [8]  = slope(vec.v2( 0,  1), vec.v2(1, 0), vec.v2(0, 2), vec.v2(1, 2)), -- / |
+    [9]  = slope(vec.v2( 0,  0), vec.v2(1, 2), vec.v2(0, 0), vec.v2(0, 2)), -- |\
+    [10] = slope(vec.v2( 0,  1), vec.v2(1, 2), vec.v2(0, 0), vec.v2(0, 2)), -- | \
+    [11] = slope(vec.v2( 0,  0), vec.v2(0, 2), vec.v2(1, 0), vec.v2(0, 0)), -- | /
+    [12] = slope(vec.v2( 0,  1), vec.v2(0, 2), vec.v2(1, 0), vec.v2(0, 0)), -- |/
+    [13] = slope(vec.v2( 0,  0), vec.v2(0, 0), vec.v2(1, 2), vec.v2(1, 0)), -- \ |
+    [14] = slope(vec.v2( 0,  1), vec.v2(0, 0), vec.v2(1, 2), vec.v2(1, 0)), --  \|
+    [15] = slope(vec.v2( 0,  0), vec.v2(2, 0), vec.v2(0, 1), vec.v2(2, 1)), --  /
+    [16] = slope(vec.v2( 1,  0), vec.v2(2, 0), vec.v2(0, 1), vec.v2(2, 1)), -- /_
 }
 
 local tilemap = {
@@ -186,14 +188,14 @@ local tilemap = {
     {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
     {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  4 },
     {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  4,  0 },
-    {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  6,  0,  0,  0,  0,  0,  0,  0,  0,  4,  0,  0 },
-    {  0,  0,  0,  0,  0,  1,  0,  1,  3,  0,  0,  0,  6,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
+    {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  0,  0,  6,  0,  0,  0,  0,  0,  0,  0,  0,  4,  0,  0 },
+    {  0,  0,  0,  0,  0,  1,  0,  1,  3,  0,  0,  0,  6,  0,  0,  0,  1,  2,  0,  0,  0,  0,  0,  0,  0 },
     {  0,  0,  0,  7,  9,  0,  1,  0,  0,  1,  1,  6,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
     {  0,  0,  0,  8, 10,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  4,  0,  0,  0,  0,  0 },
     {  0,  0,  0, 13, 11,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  4,  0,  0,  0,  0,  0,  0 },
-    {  0,  0,  0, 14, 12,  1,  1,  1,  1,  2,  0,  0,  0,  0,  0,  0,  0,  7,  0,  0,  0,  0,  0,  0,  0 },
-    {  0,  0,  0,  4,  3,  1,  0,  0,  0,  1,  0,  1,  0,  0,  0,  0,  0,  8,  0,  0,  0,  0,  0,  0,  0 },
-    {  1,  1,  1,  5,  6,  1,  0,  0,  0,  2,  0,  0,  0,  0,  0,  0,  0,  1,  1,  1,  1,  1,  0,  1,  0 },
+    {  0,  0,  0, 14, 12,  1,  1,  1,  1,  1,  0,  0,  0,  0,  0,  0,  0,  7,  0,  0,  0,  0,  0,  0,  0 },
+    {  0,  0,  0,  4,  3,  1,  0,  0,  0,  1,  0,  1,  2,  2,  0,  0,  0,  8,  0,  0,  0,  0,  0,  0,  0 },
+    {  1,  1,  1,  5,  6,  1,  0,  0,  0,  1,  0,  0,  0,  0,  0,  0,  0,  1,  1,  1,  1,  1,  0,  1,  0 },
     {  1,  1,  1,  1,  1,  1,  0,  0,  0,  1,  1,  3,  0,  0,  0,  4,  1,  1,  1,  0,  1,  0,  1,  0,  1 },
     {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  1, 15, 16,  1,  1,  0,  0,  0,  0,  0,  0,  0,  0 },
     {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  1,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
@@ -218,7 +220,7 @@ end
 
 -- check if t is a slope and its highest point is left (sgn = -1) or right (sgn = 1)
 function is_slope_facing(t, sgn)
-    return is_slope(t) and sign(info_of(t).slope.normal.x) == sgn
+    return is_slope(t) and sign(info_of(t).normals[1].x) == sgn
 end
 
 function slope_diag_point(to, info, value, dim, dim_to)
@@ -397,13 +399,25 @@ while not rl.WindowShouldClose() do
                         function check(t, where)
                             return is_slope_facing(t, where)
                                and vec.eq(p2t(center), t)
-                               and move == b2i(info_of(t).slope.normal.y < 0)
+                               and move == b2i(info_of(t).normals[1].y < 0)
                         end
                         return check(tile + vec.v2(-1, 0), -1)
                             or check(tile + vec.v2( 1, 0),  1)
                     end
 
                     function get_tile_dim(tile)
+                        local normals = info_of(tile).normals
+                        local res = filter(function (n)
+                            return vec.dot(direction, n) < 0
+                        end, normals)
+                        if #res == 0 then
+                            return math.huge
+                        end
+                        -- tprint(fmt.tostring("p2t(old_pos) = ", p2t(old_pos), "tile = ", tile))
+                        -- if p2t(old_pos) == tile then
+                        --     return math.huge
+                        -- end
+                        tprint(fmt.tostring("normals = ", res))
                         local points = { vec.one, vec.zero }
                         local point = t2p(tile) + points[move+1] * TILE_SIZE
                         return dim(point) - dim(size) * move - dim(hitbox_unit[1])
@@ -411,8 +425,8 @@ while not rl.WindowShouldClose() do
 
                     function get_slope_dim(tile)
                         local info = info_of(tile)
-                        local dir = b2i(info.slope.normal.y < 0)
-                        if dir ~= move or vec.dot(direction, info.slope.normal) >= 0 then
+                        local dir = b2i(info.normals[1].y < 0)
+                        if dir ~= move or vec.dot(direction, info.normals[1]) >= 0 then
                             return math.huge
                         end
                         local to    = t2p(tile - info.slope.origin)
@@ -443,7 +457,7 @@ while not rl.WindowShouldClose() do
                     function get_slope_dim_x(tile)
                         local info       = info_of(tile)
                         local to         = t2p(tile - info.slope.origin)
-                        local diry       = b2i(info.slope.normal.y < 0)
+                        local diry       = b2i(info.normals[1].y < 0)
                         local hitbox_y   = hitbox[diry+1].y
                         -- lowest y of normal slopes, highest y of upside-down slopes
                         local lowest_y   = to.y + diry * info.slope.size.y * TILE_SIZE
@@ -451,7 +465,7 @@ while not rl.WindowShouldClose() do
                         local y          = min(hitbox_y, lowest_y)
                         local xu         = slope_diag_point(to, info, y, vec.y, vec.x)
                         local x          = to.x + xu * TILE_SIZE
-                        local lt         = info.slope.normal.x < 0 and lt or gt
+                        local lt         = info.normals[1].x < 0 and lt or gt
                         return lt(hitbox[move+1].x, x) and math.huge
                             or x - size.x/2
                     end
@@ -534,6 +548,13 @@ while not rl.WindowShouldClose() do
 
     rl.BeginMode2D(camera)
 
+    function n2ps(n)
+        return vec.eq(n, vec.v2( 0, -1)) and { vec.v2(0, 0), vec.v2(1, 0) }
+            or vec.eq(n, vec.v2( 0,  1)) and { vec.v2(0, 1), vec.v2(1, 1) }
+            or vec.eq(n, vec.v2(-1,  0)) and { vec.v2(0, 0), vec.v2(0, 1) }
+            or                               { vec.v2(1, 0), vec.v2(1, 1) }
+    end
+
     for y = 1, SCREEN_HEIGHT do
         for x = 1, SCREEN_WIDTH do
             local index = tilemap[y][x]
@@ -545,7 +566,10 @@ while not rl.WindowShouldClose() do
                     local color = findf(function (v)
                         return vec.eq(v.tile, tile)
                     end, collision_tiles) and rl.RED or rl.WHITE
-                    rl.DrawRectangleV(orig, vec.v2(TILE_SIZE, TILE_SIZE), color)
+                    for _, n in ipairs(info.normals) do
+                        local ps = n2ps(n)
+                        rl.DrawLineV(orig + ps[1] * TILE_SIZE, orig + ps[2] * TILE_SIZE, color)
+                    end
                 elseif vec.eq(info.slope.origin, vec.zero) then
                     local tiles = slope_tiles(tile)
                     local color = findf(function (v)
