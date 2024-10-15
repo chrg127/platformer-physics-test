@@ -70,16 +70,12 @@ end
 
 function filter(pred, t)
     local r = {}
-    for _, v in pairs(t) do
+    for _, v in ipairs(t) do
         if pred(v) then
             table.insert(r, v)
         end
     end
     return r
-end
-
-function filter_not(pred, t)
-    return filter(function (v) return not pred(v) end, t)
 end
 
 function foldl(fn, init, t)
@@ -124,7 +120,7 @@ local TILE_SIZE = 16
 local SCREEN_WIDTH = 25
 local SCREEN_HEIGHT = 20
 -- scale window up to this number
-local SCALE = 2
+local SCALE = 1
 -- set this to true for free movement instead of being bound by gravity
 local FREE_MOVEMENT = false
 local FREE_MOVEMENT_SPEED = 2
@@ -265,8 +261,8 @@ local PLAYER_HITBOX = { vec.v2(0, 0), vec.v2(TILE_SIZE-0, TILE_SIZE*2) }
 
 local PLAYER_COLLISION_HITBOXES = {
     {
-        { vec.v2( 0,  4), vec.v2( 1, 28) }, -- left
-        { vec.v2(15,  4), vec.v2(16, 28) }, -- right
+        { vec.v2( 0,  6), vec.v2( 1, 26) }, -- left
+        { vec.v2(15,  6), vec.v2(16, 26) }, -- right
     },
     {
         { vec.v2( 0,  0), vec.v2(15, 10) }, -- up
@@ -390,19 +386,49 @@ while not rl.WindowShouldClose() do
                     local minf = move == 0 and function (t) return maxf(identity, -math.huge, t) end
                                            or  function (t) return minf(identity,  math.huge, t) end
 
-                    function ignore_tile(tile)
-                        local side = move == 0 and -1 or 1
-                        if axis == 0 and is_slope_facing(tile + vec.v2(-side, 0), -side) then
-                            return true
+                    -- 1) you move left
+                    -- 2) slope code for the y axis sees you're inside the slope and pushes you up
+                    -- 3) in this frame (let's call it frame 1) you'll be inside the tile
+                    -- 4) on frame 2, you either keep moving left or stop
+                    -- 5) regular tile code for the x axis sees you're inside a tile
+                    -- 6) you're pushed back to the right because we prioritize the x axis
+                    -- solution: find if the player is higher or lower than the slope. it it's
+                    -- higher, then ignore any tile
+                    function ignore_tile(tile, slopes)
+                        if axis == 0 then
+                            local side = move == 0 and -1 or 1
+                            return is_slope_facing(tile + vec.v2(-side, 0), -side)
                         end
-                        local center = vec.v2(hitbox[1].x + size.x/2, hitbox[move+1].y)
-                        function check(t, where)
-                            return is_slope_facing(t, where)
-                               and vec.eq(p2t(center), t)
-                               and move == b2i(info_of(t).normals[1].y < 0)
+                        function check(t, sgn)
+                            local info = info_of(t)
+                            return is_slope(t, sgn)
+                               and sign(info.slope.normal.x) == sgn
+                               and index_of(slopes, t, vec.eq)
+                               and move == b2i(info.slope.normal.y < 0)
                         end
                         return check(tile + vec.v2(-1, 0), -1)
                             or check(tile + vec.v2( 1, 0),  1)
+                    end
+
+                    function is_over_slope(tile)
+                        local info = info_of(tile)
+                        local dir = b2i(info.slope.normal.y < 0)
+                        if dir ~= move or vec.dot(direction, info.slope.normal) >= 0 then
+                            return math.huge
+                        end
+                        local to    = t2p(tile - info.slope.origin)
+                        local y     = slope_diag_point_y(to, info,     hitbox[1].x + size.x/2)
+                        local old_y = slope_diag_point_y(to, info, old_hitbox[1].x + size.x/2)
+                        if y == math.huge then
+                            return math.huge
+                        end
+                        -- check if the player is inside the slope
+                        local lteq = dir == 0 and gteq or lteq
+                        if (old_y == math.huge or lteq(old_hitbox[dir+1].y, old_y))
+                        and not lteq(hitbox[dir+1].y, y) then
+                            return y - size.y * dir
+                        end
+                        return math.huge
                     end
 
                     function get_tile_dim(tile)
@@ -444,16 +470,6 @@ while not rl.WindowShouldClose() do
                         return math.huge
                     end
 
-                    function get_slope_y(slopes)
-                        function is_on_center(tile)
-                            local info = info_of(tile)
-                            local x = hitbox[1].x + size.x/2 - t2p(tile - info.slope.origin).x
-                            return x > 0 and x < info.slope.size.x * TILE_SIZE
-                        end
-                        local slope = #slopes == 1 and slopes[1] or findf(is_on_center, slopes)
-                        return slope and get_slope_dim(slope) or math.huge
-                    end
-
                     function get_slope_dim_x(tile)
                         local info       = info_of(tile)
                         local to         = t2p(tile - info.slope.origin)
@@ -470,10 +486,11 @@ while not rl.WindowShouldClose() do
                             or x - size.x/2
                     end
 
+                    function get_slope_y(slopes)
+                        return #slopes > 0 and get_slope_dim(slopes[1]) or math.huge
+                    end
+
                     function get_slope_x(slopes)
-                        slopes = filter(function (v)
-                            return v.x == p2t(hitbox[1] + size/2).x
-                        end, slopes)
                         if #slopes < 2 then
                             return math.huge
                         end
@@ -490,8 +507,13 @@ while not rl.WindowShouldClose() do
                             or minf(contact_points)
                     end
 
-                    local slopes, others = partition(is_slope, tiles)
-                    local dims = map(get_tile_dim, filter_not(ignore_tile, others))
+                    local all_slopes, others = partition(is_slope, tiles)
+                    local slopes = filter(function (t)
+                        return t.x == p2t(hitbox[1] + size/2).x
+                    end, all_slopes)
+                    local dims = map(get_tile_dim, filter(function (t)
+                        return not ignore_tile(t, slopes) end,
+                    others))
                     table.insert(dims, axis == 0 and get_slope_x(slopes) or get_slope_y(slopes))
                     local d = minf(filter(function (v) return v ~= math.huge end, dims))
                     if math.abs(d) ~= math.huge then
