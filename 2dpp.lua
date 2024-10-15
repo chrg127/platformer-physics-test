@@ -18,7 +18,7 @@ function vec.eq(a, b) return rl.Vector2Equals(a, b) == 1 end
 
 function vec.x(v) return v.x end
 function vec.y(v) return v.y end
-function vec.dim(v, d) return d == 0 and v.x or v.y end
+function vec.dim(v, d) return d == 1 and v.x or v.y end
 
 function vec.set_dim(v, d, x)
     return vec.v2(d == 0 and x or v.x, d == 1 and x or v.y)
@@ -172,6 +172,8 @@ local tile_info = {
     [14] = slope(vec.v2( 0,  1), vec.v2(0, 0), vec.v2(1, 2), vec.v2(1, 0)), --  \|
     [15] = slope(vec.v2( 0,  0), vec.v2(2, 0), vec.v2(0, 1), vec.v2(2, 1)), --  /
     [16] = slope(vec.v2( 1,  0), vec.v2(2, 0), vec.v2(0, 1), vec.v2(2, 1)), -- /_
+    [17] = { normals = { vec.v2(0, -1), vec.v2(-1, 0) } },
+    [18] = { normals = { vec.v2(0, -1), vec.v2( 1, 0) } },
 }
 
 local tilemap = {
@@ -182,7 +184,7 @@ local tilemap = {
     {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
     {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
     {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
-    {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  4 },
+    {  0,  0,  0,  0,  0,  0,  0,  0, 17, 18,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  4 },
     {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  4,  0 },
     {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  0,  0,  6,  0,  0,  0,  0,  0,  0,  0,  0,  4,  0,  0 },
     {  0,  0,  0,  0,  0,  1,  0,  1,  3,  0,  0,  0,  6,  0,  0,  0,  1,  2,  0,  0,  0,  0,  0,  0,  0 },
@@ -211,7 +213,7 @@ function is_slope(t)
         return false
     end
     local ti = tilemap[t.y][t.x]
-    return ti ~= nil and ti >= 3
+    return ti ~= nil and ti >= 3 and ti <= 16
 end
 
 -- check if t is a slope and its highest point is left (sgn = -1) or right (sgn = 1)
@@ -261,8 +263,8 @@ local PLAYER_HITBOX = { vec.v2(0, 0), vec.v2(TILE_SIZE-0, TILE_SIZE*2) }
 
 local PLAYER_COLLISION_HITBOXES = {
     {
-        { vec.v2( 0,  6), vec.v2( 1, 26) }, -- left
-        { vec.v2(15,  6), vec.v2(16, 26) }, -- right
+        { vec.v2( 0,  5), vec.v2( 1, 27) }, -- left
+        { vec.v2(15,  5), vec.v2(16, 27) }, -- right
     },
     {
         { vec.v2( 0,  0), vec.v2(15, 10) }, -- up
@@ -402,9 +404,9 @@ while not rl.WindowShouldClose() do
                         function check(t, sgn)
                             local info = info_of(t)
                             return is_slope(t, sgn)
-                               and sign(info.slope.normal.x) == sgn
+                               and sign(info.normals[1].x) == sgn
                                and index_of(slopes, t, vec.eq)
-                               and move == b2i(info.slope.normal.y < 0)
+                               and move == b2i(info.normals[1].y < 0)
                         end
                         return check(tile + vec.v2(-1, 0), -1)
                             or check(tile + vec.v2( 1, 0),  1)
@@ -412,8 +414,8 @@ while not rl.WindowShouldClose() do
 
                     function is_over_slope(tile)
                         local info = info_of(tile)
-                        local dir = b2i(info.slope.normal.y < 0)
-                        if dir ~= move or vec.dot(direction, info.slope.normal) >= 0 then
+                        local dir = b2i(info.normals[1].y < 0)
+                        if dir ~= move or vec.dot(direction, info.normals[1]) >= 0 then
                             return math.huge
                         end
                         local to    = t2p(tile - info.slope.origin)
@@ -434,15 +436,28 @@ while not rl.WindowShouldClose() do
                     function get_tile_dim(tile)
                         local normals = info_of(tile).normals
                         local res = filter(function (n)
-                            return vec.dot(direction, n) < 0
+                            if vec.dot(direction, n) < 0 then
+                                local axis = n.x ~= 0               and 0 or 1
+                                local side = vec.dim(n, axis+1) > 0 and 0 or 1
+                                local side2 = side == 0 and 1 or 0
+                                local lteq = side == 0 and gteq or lteq
+                                -- for n = v2(0, -1)
+                                -- local old_d = vec.dim(old_hitbox[side+1], axis+1)
+                                -- local d     = vec.dim(    hitbox[side+1], axis+1)
+                                -- local td    = vec.dim(t2p(tile), axis+1) + side2 * TILE_SIZE
+                                -- for n = v2(0, 1)
+                                local old_d = vec.dim(old_hitbox[side+1], axis+1)
+                                local d     = vec.dim(    hitbox[side+1], axis+1)
+                                local td    = vec.dim(t2p(tile), axis+1) + side2 * TILE_SIZE
+                                if lteq(old_d, td) and not lteq(d, td) then
+                                    return true
+                                end
+                            end
+                            return false
                         end, normals)
                         if #res == 0 then
                             return math.huge
                         end
-                        -- tprint(fmt.tostring("p2t(old_pos) = ", p2t(old_pos), "tile = ", tile))
-                        -- if p2t(old_pos) == tile then
-                        --     return math.huge
-                        -- end
                         tprint(fmt.tostring("normals = ", res))
                         local points = { vec.one, vec.zero }
                         local point = t2p(tile) + points[move+1] * TILE_SIZE
@@ -536,7 +551,7 @@ while not rl.WindowShouldClose() do
     )
     player.pos = pos
     for _, dim in ipairs{ 0, 1 } do
-        if findf(function (v) return vec.dim(v.dir, dim) ~= 0 end, collision_tiles) then
+        if findf(function (v) return vec.dim(v.dir, dim+1) ~= 0 end, collision_tiles) then
             player.vel = vec.set_dim(player.vel, dim, 0)
         end
     end
