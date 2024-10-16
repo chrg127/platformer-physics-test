@@ -192,7 +192,7 @@ local tilemap = {
     {  0,  0,  0,  8, 10,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  4,  0,  0,  0,  0,  0 },
     {  0,  0,  0, 13, 11,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  4,  0,  0,  0,  0,  0,  0 },
     {  0,  0,  0, 14, 12,  1,  1,  1,  1,  1,  0,  0,  0,  0,  0,  0,  0,  7,  0,  0,  0,  0,  0,  0,  0 },
-    {  0,  0,  0,  4,  3,  1,  0,  0,  0,  1,  0,  1,  2,  2,  0,  0,  0,  8,  0,  0,  0,  0,  0,  0,  0 },
+    {  0,  0,  0,  4,  3,  1,  0,  0,  0,  1,  1,  1,  2,  2,  0,  0,  0,  8,  0,  0,  0,  0,  0,  0,  0 },
     {  1,  1,  1,  5,  6,  1,  0,  0,  0,  1,  0,  0,  0,  0,  0,  0,  0,  1,  1,  1,  1,  1,  0,  1,  0 },
     {  1,  1,  1,  1,  1,  1,  0,  0,  0,  1,  1,  3,  0,  0,  0,  4,  1,  1,  1,  0,  1,  0,  1,  0,  1 },
     {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  1, 15, 16,  1,  1,  0,  0,  0,  0,  0,  0,  0,  0 },
@@ -391,18 +391,11 @@ while not rl.WindowShouldClose() do
                     local minf = move == 0 and function (t) return maxf(identity, -math.huge, t) end
                                            or  function (t) return minf(identity,  math.huge, t) end
 
-                    -- 1) you move left
-                    -- 2) slope code for the y axis sees you're inside the slope and pushes you up
-                    -- 3) in this frame (let's call it frame 1) you'll be inside the tile
-                    -- 4) on frame 2, you either keep moving left or stop
-                    -- 5) regular tile code for the x axis sees you're inside a tile
-                    -- 6) you're pushed back to the right because we prioritize the x axis
-                    -- solution: find if the player is higher or lower than the slope. it it's
-                    -- higher, then ignore any tile
                     function ignore_tile(tile, slopes)
                         if axis == 0 then
                             local side = move == 0 and -1 or 1
                             return is_slope_facing(tile + vec.v2(-side, 0), -side)
+                               and is_over_slope(tile + vec.v2(-side, 0))
                         end
                         function check(t, sgn)
                             local info = info_of(t)
@@ -416,24 +409,14 @@ while not rl.WindowShouldClose() do
                     end
 
                     function is_over_slope(tile)
-                        local info = info_of(tile)
-                        local dir = b2i(info.normals[1].y < 0)
-                        if dir ~= move or vec.dot(direction, info.normals[1]) >= 0 then
-                            return math.huge
-                        end
+                        local info  = info_of(tile)
+                        local dir   = b2i(info.normals[1].y < 0)
                         local to    = t2p(tile - info.slope.origin)
-                        local y     = slope_diag_point_y(to, info,     hitbox[1].x + size.x/2)
-                        local old_y = slope_diag_point_y(to, info, old_hitbox[1].x + size.x/2)
-                        if y == math.huge then
-                            return math.huge
-                        end
-                        -- check if the player is inside the slope
+                        local yu    = slope_diag_point(
+                            to, info, old_hitbox[1].x + size.x/2, vec.x, vec.y)
+                        local y     = to.y + yu * TILE_SIZE
                         local lteq = dir == 0 and gteq or lteq
-                        if (old_y == math.huge or lteq(old_hitbox[dir+1].y, old_y))
-                        and not lteq(hitbox[dir+1].y, y) then
-                            return y - size.y * dir
-                        end
-                        return math.huge
+                        return lteq(old_hitbox[dir+1].y, y)
                     end
 
                     function get_tile_dim(tile)
@@ -629,7 +612,7 @@ while not rl.WindowShouldClose() do
     rl.EndMode2D()
 
     for _, line in ipairs(lines_to_print) do
-        rl.DrawText(line[1], 5, line[2], 10, rl.GRAY)
+        rl.DrawText(line[1], 5, line[2], 10, rl.GREEN)
     end
 
     rl.EndTextureMode()
