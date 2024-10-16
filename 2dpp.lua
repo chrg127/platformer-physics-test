@@ -272,6 +272,9 @@ local PLAYER_COLLISION_HITBOXES = {
     }
 }
 
+-- tiles have a "border" where collisions register. this constant controls how big it is
+local TILE_TOLLERANCE = 5
+
 -- physics constant for the player, change these to control the "feel" of the game
 local ACCEL = 700
 local DECEL = 300
@@ -437,19 +440,14 @@ while not rl.WindowShouldClose() do
                         local normals = info_of(tile).normals
                         local res = filter(function (n)
                             if vec.dot(direction, n) < 0 then
-                                local axis = n.x ~= 0               and 0 or 1
-                                local side = vec.dim(n, axis+1) > 0 and 0 or 1
+                                local axis  = n.x ~= 0               and 0 or 1
+                                local side  = vec.dim(n, axis+1) > 0 and 0 or 1
                                 local side2 = side == 0 and 1 or 0
-                                local lteq = side == 0 and gteq or lteq
-                                -- for n = v2(0, -1)
-                                -- local old_d = vec.dim(old_hitbox[side+1], axis+1)
-                                -- local d     = vec.dim(    hitbox[side+1], axis+1)
-                                -- local td    = vec.dim(t2p(tile), axis+1) + side2 * TILE_SIZE
-                                -- for n = v2(0, 1)
+                                local lteq  = side == 0 and gteq or lteq
                                 local old_d = vec.dim(old_hitbox[side+1], axis+1)
                                 local d     = vec.dim(    hitbox[side+1], axis+1)
                                 local td    = vec.dim(t2p(tile), axis+1) + side2 * TILE_SIZE
-                                if lteq(old_d, td) and not lteq(d, td) then
+                                if lteq(old_d, td + TILE_TOLLERANCE * -sign(vec.dim(n, axis+1))) then
                                     return true
                                 end
                             end
@@ -458,7 +456,6 @@ while not rl.WindowShouldClose() do
                         if #res == 0 then
                             return math.huge
                         end
-                        tprint(fmt.tostring("normals = ", res))
                         local points = { vec.one, vec.zero }
                         local point = t2p(tile) + points[move+1] * TILE_SIZE
                         return dim(point) - dim(size) * move - dim(hitbox_unit[1])
