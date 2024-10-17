@@ -156,8 +156,11 @@ end
 
 -- store info about a tile here, such as color, shape, normals, etc.
 local tile_info = {
-    [1]  = { normals = { vec.v2(1, 0), vec.v2(-1, 0), vec.v2(0, 1), vec.v2(0, -1) } },
-    [2]  = { normals = { vec.v2(0, -1) } },
+    [1]  = { normals = { vec.v2(1, 0), vec.v2(-1, 0), vec.v2(0, 1), vec.v2(0, -1) } }, -- box
+    [2]  = { normals = { vec.v2( 0, -1) } }, -- -
+    [23] = { normals = { vec.v2( 0,  1) } }, -- _
+    [24] = { normals = { vec.v2(-1,  0) } }, -- |
+    [25] = { normals = { vec.v2( 1,  0) } }, --  |
     [3]  = slope(vec.v2( 0,  0), vec.v2(1, 1), vec.v2(0, 0), vec.v2(0, 1)), -- |\
     [4]  = slope(vec.v2( 0,  0), vec.v2(1, 0), vec.v2(0, 1), vec.v2(1, 1)), -- /|
     [5]  = slope(vec.v2( 0,  0), vec.v2(0, 0), vec.v2(1, 1), vec.v2(1, 0)), -- \|
@@ -172,20 +175,24 @@ local tile_info = {
     [14] = slope(vec.v2( 0,  1), vec.v2(0, 0), vec.v2(1, 2), vec.v2(1, 0)), --  \|
     [15] = slope(vec.v2( 0,  0), vec.v2(2, 0), vec.v2(0, 1), vec.v2(2, 1)), --  /
     [16] = slope(vec.v2( 1,  0), vec.v2(2, 0), vec.v2(0, 1), vec.v2(2, 1)), -- /_
-    [17] = { normals = { vec.v2(0, -1), vec.v2(-1, 0) } },
-    [18] = { normals = { vec.v2(0, -1), vec.v2( 1, 0) } },
+    [17] = slope(vec.v2( 0,  0), vec.v2(2, 0), vec.v2(0, 1), vec.v2(2, 1)), -- \
+    [18] = slope(vec.v2( 1,  0), vec.v2(2, 0), vec.v2(0, 1), vec.v2(2, 1)), -- _\
+    [19] = slope(vec.v2( 0,  0), vec.v2(2, 0), vec.v2(0, 1), vec.v2(2, 1)), -- \-
+    [20] = slope(vec.v2( 1,  0), vec.v2(2, 0), vec.v2(0, 1), vec.v2(2, 1)), --  \
+    [21] = slope(vec.v2( 0,  0), vec.v2(2, 0), vec.v2(0, 1), vec.v2(2, 1)), -- -/
+    [22] = slope(vec.v2( 1,  0), vec.v2(2, 0), vec.v2(0, 1), vec.v2(2, 1)), -- /
 }
 
 local tilemap = {
     {  1,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
     {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
     {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
-    {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
-    {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
-    {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
-    {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
-    {  0,  0,  0,  0,  0,  0,  0,  0, 17, 18,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  4 },
-    {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  4,  0 },
+    {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 24,  0,  0,  0,  0,  0,  0,  0 },
+    {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 24,  0,  0,  0,  0,  0,  0,  0 },
+    {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 24,  0,  0,  0,  0,  0,  0,  0 },
+    {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 24,  0,  0,  0,  0,  0,  0,  0 },
+    {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 24,  0,  0,  0,  0,  0,  0,  4 },
+    {  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  4,  0 },
     {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  0,  0,  6,  0,  0,  0,  0,  0,  0,  0,  0,  4,  0,  0 },
     {  0,  0,  0,  0,  0,  1,  0,  1,  3,  0,  0,  0,  6,  0,  0,  0,  1,  2,  0,  0,  0,  0,  0,  0,  0 },
     {  0,  0,  0,  7,  9,  0,  1,  0,  0,  1,  1,  6,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
@@ -213,7 +220,7 @@ function is_slope(t)
         return false
     end
     local ti = tilemap[t.y][t.x]
-    return ti ~= nil and ti >= 3 and ti <= 16
+    return ti ~= nil and ti >= 3 and ti <= 22
 end
 
 -- check if t is a slope and its highest point is left (sgn = -1) or right (sgn = 1)
@@ -296,13 +303,13 @@ local VEL_Y_CAP = 22 * TILE_SIZE -- just under 6 pixels at 60 FPS
 local GRAVITY = 400
 -- used when pressing the jump button while falling
 local SLOW_GRAVITY = 300
-local JUMP_HEIGHT_MAX = 4.5 -- tiles
-local JUMP_HEIGHT_MIN = 0.2  -- tiles
+local JUMP_HEIGHT_MAX1 = 4.5 -- tiles
+local JUMP_HEIGHT_MAX2 = 5.5 -- tiles, max height is interpolated between 1 and 2
+local JUMP_HEIGHT_MIN  = 0.2 -- tiles
 local COYOTE_TIME_FRAMES = 10
 -- how many pixels over the ground should a jump be registered?
 local JUMP_BUF_WINDOW = 16
 
-local JUMP_VEL     = -math.sqrt(2 * GRAVITY * JUMP_HEIGHT_MAX * TILE_SIZE)
 local JUMP_VEL_MIN = -math.sqrt(2 * GRAVITY * JUMP_HEIGHT_MIN * TILE_SIZE)
 
 local gravity_dir = 1
@@ -312,6 +319,7 @@ local logfile = io.open("log.txt", "w")
 while not rl.WindowShouldClose() do
     local dt = rl.GetFrameTime()
 
+    -- debug facilities
     local cur_line = 5
     local lines_to_print = {}
     function tprint(s)
@@ -338,21 +346,19 @@ while not rl.WindowShouldClose() do
     gravity = gravity * gravity_dir
     local accel = vec.v2(accel_hor + decel_hor, gravity)
 
-    local old_vel = player.vel
     player.vel = player.vel + accel * dt
     player.vel.x = clamp(player.vel.x, -VEL_X_CAP, VEL_X_CAP)
-    -- player.vel.x = rl.IsKeyDown(rl.KEY_LEFT)  and -VEL_X_CAP
-    --             or rl.IsKeyDown(rl.KEY_RIGHT) and  VEL_X_CAP
-    --             or 0
+    player.vel.y = clamp(player.vel.y, -VEL_Y_CAP, VEL_Y_CAP)
 
     if math.abs(player.vel.x) < 4 then
         player.vel.x = 0
     end
 
-    if  (rl.IsKeyPressed(rl.KEY_Z) or player.jump_buf)
-    and (player.on_ground or player.coyote_time > 0) then
-        player.vel.y = JUMP_VEL * gravity_dir
-        tprint("jumped, JUMP_VEL = " .. tostring(JUMP_VEL))
+    -- jump control
+    if (rl.IsKeyPressed(rl.KEY_Z) or player.jump_buf) and (player.on_ground or player.coyote_time > 0) then
+        local h = lerp(JUMP_HEIGHT_MAX1, JUMP_HEIGHT_MAX2, math.abs(player.vel.x / VEL_X_CAP))
+        local jump_vel = -math.sqrt(2 * GRAVITY * h * TILE_SIZE)
+        player.vel.y = jump_vel * gravity_dir
         player.jump_buf = false
     end
 
@@ -364,10 +370,7 @@ while not rl.WindowShouldClose() do
         player.vel.y = JUMP_VEL_MIN * gravity_dir
     end
 
-    player.vel.y = clamp(player.vel.y, -VEL_Y_CAP, VEL_Y_CAP)
-
     local old_pos = player.pos
-    local old_vel = player.vel
     if not FREE_MOVEMENT then
         player.pos = player.pos + player.vel * dt
     else
