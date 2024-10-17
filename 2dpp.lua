@@ -263,12 +263,12 @@ local PLAYER_HITBOX = { vec.v2(0, 0), vec.v2(TILE_SIZE-0, TILE_SIZE*2) }
 
 local PLAYER_COLLISION_HITBOXES = {
     {
-        { vec.v2( 0,  5), vec.v2( 1, 27) }, -- left
-        { vec.v2(15,  5), vec.v2(16, 27) }, -- right
+        { vec.v2( 0,  6), vec.v2( 1, 26) }, -- left
+        { vec.v2(15,  6), vec.v2(16, 26) }, -- right
     },
     {
-        { vec.v2( 0,  0), vec.v2(15, 10) }, -- up
-        { vec.v2( 0, 22), vec.v2(15, 32) }, -- down
+        { vec.v2( 4,  0), vec.v2(11, 10) }, -- up
+        { vec.v2( 4, 22), vec.v2(11, 32) }, -- down
     }
 }
 
@@ -276,20 +276,36 @@ local PLAYER_COLLISION_HITBOXES = {
 local TILE_TOLLERANCE = 5
 
 -- physics constant for the player, change these to control the "feel" of the game
+
 local ACCEL = 700
 local DECEL = 300
-local VEL_CAP = 14 * TILE_SIZE
+
+-- the cap is in tiles, but you'd probably want to know how many pixels
+-- you're traveling each frame. the formula is dependent on FPS, so set a
+-- maximum target FPS, then use p = cap * (1/fps). if you'd like to know the cap
+-- from a set pixels, reverse the formula: cap = p/(1/fps)
+-- this is especially important for the y cap: the result of the above formula
+-- should stay lower than the dead zone on the x axis.
+-- the tile tollerance plays a factor on this too. put your cap too high, and
+-- you might notice the player getting inside tiles at high speed.
+
+-- i've found this one can be really large. only when p >= 16 it starts being
+-- problematic. might be more problematic for slopes.
+local VEL_X_CAP = 40 * TILE_SIZE -- i've found this one can be really large.
+local VEL_Y_CAP = 22 * TILE_SIZE -- just under 6 pixels at 60 FPS
 local GRAVITY = 400
 -- used when pressing the jump button while falling
 local SLOW_GRAVITY = 300
 local JUMP_HEIGHT_MAX = 4.5 -- tiles
-local JUMP_HEIGHT_MIN = 0.2 -- tiles
+local JUMP_HEIGHT_MIN = 0.2  -- tiles
 local COYOTE_TIME_FRAMES = 10
 -- how many pixels over the ground should a jump be registered?
 local JUMP_BUF_WINDOW = 16
 
-local JUMP_VEL     = -math.sqrt(2 * GRAVITY * (JUMP_HEIGHT_MAX * TILE_SIZE))
-local JUMP_VEL_MIN = -math.sqrt(2 * GRAVITY * (JUMP_HEIGHT_MIN * TILE_SIZE))
+local JUMP_VEL     = -math.sqrt(2 * GRAVITY * JUMP_HEIGHT_MAX * TILE_SIZE)
+local JUMP_VEL_MIN = -math.sqrt(2 * GRAVITY * JUMP_HEIGHT_MIN * TILE_SIZE)
+
+local gravity_dir = 1
 
 local logfile = io.open("log.txt", "w")
 
@@ -305,6 +321,11 @@ while not rl.WindowShouldClose() do
     end
 
     tprint(tostring(rl.GetFPS()) .. " FPS")
+    tprint("dt = " .. tostring(dt))
+
+    if rl.IsKeyReleased(rl.KEY_R) then
+        gravity_dir = -gravity_dir
+    end
 
     -- player physics
     local accel_hor = (rl.IsKeyDown(rl.KEY_LEFT)  and -ACCEL or 0)
@@ -314,25 +335,36 @@ while not rl.WindowShouldClose() do
                    or 0
     local gravity = rl.IsKeyDown(rl.KEY_Z) and not player.on_ground and player.vel.y > 0
                 and SLOW_GRAVITY or GRAVITY
+    gravity = gravity * gravity_dir
     local accel = vec.v2(accel_hor + decel_hor, gravity)
 
     local old_vel = player.vel
     player.vel = player.vel + accel * dt
-    player.vel.x = clamp(player.vel.x, -VEL_CAP, VEL_CAP)
+    player.vel.x = clamp(player.vel.x, -VEL_X_CAP, VEL_X_CAP)
+    -- player.vel.x = rl.IsKeyDown(rl.KEY_LEFT)  and -VEL_X_CAP
+    --             or rl.IsKeyDown(rl.KEY_RIGHT) and  VEL_X_CAP
+    --             or 0
+
     if math.abs(player.vel.x) < 4 then
         player.vel.x = 0
     end
 
     if  (rl.IsKeyPressed(rl.KEY_Z) or player.jump_buf)
     and (player.on_ground or player.coyote_time > 0) then
-        player.vel.y = JUMP_VEL
+        player.vel.y = JUMP_VEL * gravity_dir
+        tprint("jumped, JUMP_VEL = " .. tostring(JUMP_VEL))
         player.jump_buf = false
     end
 
+    -- when jumping, if the player stops pressing the jump key, quickly change
+    -- his velocity to simulate variable jump height
     if not rl.IsKeyDown(rl.KEY_Z) and not player.on_ground
-       and player.vel.y < JUMP_VEL_MIN then
-        player.vel.y = JUMP_VEL_MIN
+       and (gravity_dir > 0 and player.vel.y < JUMP_VEL_MIN * gravity_dir
+         or gravity_dir < 0 and player.vel.y > JUMP_VEL_MIN * gravity_dir) then
+        player.vel.y = JUMP_VEL_MIN * gravity_dir
     end
+
+    player.vel.y = clamp(player.vel.y, -VEL_Y_CAP, VEL_Y_CAP)
 
     local old_pos = player.pos
     local old_vel = player.vel
@@ -351,9 +383,6 @@ while not rl.WindowShouldClose() do
     tprint("accel  = " .. tostring(accel))
 
     -- collision with ground
-    local old_on_ground = player.on_ground
-    player.on_ground = false
-
     function get_tiles(box)
         local res, start, endd = {}, p2t(box[1]), p2t(box[2])
         for y = start.y, endd.y do
@@ -458,7 +487,8 @@ while not rl.WindowShouldClose() do
                         end
                         -- check if the player is inside the slope
                         local lteq = dir == 0 and gteq or lteq
-                        if (old_y == math.huge or lteq(old_hitbox[dir+1].y, old_y))
+                        local toll = TILE_TOLLERANCE * -sign(info.normals[1].y)
+                        if (old_y == math.huge or lteq(old_hitbox[dir+1].y, old_y + toll))
                         and not lteq(hitbox[dir+1].y, y) then
                             return y - size.y * dir
                         end
@@ -535,11 +565,15 @@ while not rl.WindowShouldClose() do
             player.vel = vec.set_dim(player.vel, dim, 0)
         end
     end
-    if findf(function (v) return vec.eq(v.dir, vec.v2(0, 1)) end, collision_tiles) then
+
+    local old_on_ground = player.on_ground
+    player.on_ground = false
+    if findf(function (v) return vec.eq(v.dir, vec.v2(0, gravity_dir)) end, collision_tiles) then
         player.on_ground = true
     end
 
     tprint("pos (adjusted) = " .. tostring(player.pos))
+    tprint("x diff = " .. tostring(player.pos.x - old_pos.x))
     tprint("on ground = " .. tostring(player.on_ground))
 
     player.coyote_time = (old_on_ground and not player.on_ground and player.vel.y > 0) and COYOTE_TIME_FRAMES
