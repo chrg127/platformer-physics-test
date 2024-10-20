@@ -103,3 +103,20 @@ end
                         --     orig + vec.v2(TILE_SIZE, TILE_SIZE) / 2 + vec.rotate(n * math.sqrt(2)/2 * TILE_SIZE, -math.pi/4),
                         --     rl.RED
                         -- )
+
+                    function get_slope_dim_x(tile)
+                        local info       = info_of(tile)
+                        local to         = t2p(tile - info.slope.origin)
+                        local diry       = b2i(info.normals[1].y < 0)
+                        local hitbox_y   = hitbox[diry+1].y
+                        -- lowest y of normal slopes, highest y of upside-down slopes
+                        local lowest_y   = to.y + diry * info.slope.size.y * TILE_SIZE
+                        local min        = diry == 1 and math.min or math.max
+                        local y          = min(hitbox_y, lowest_y)
+                        local xu         = slope_diag_point(to, info, y, vec.y, vec.x)
+                        local x          = to.x + xu * TILE_SIZE
+                        local lt         = info.normals[1].x < 0 and lt or gt
+                        return lt(hitbox[move+1].x, x) and math.huge
+                            or x - size.x/2
+                    end
+

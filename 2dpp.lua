@@ -86,6 +86,16 @@ function foldl(fn, init, t)
     return r
 end
 
+function append(...)
+    local r = {}
+    for _, t in ipairs({...}) do
+        for _, v in ipairs(t) do
+            table.insert(r, v)
+        end
+    end
+    return r
+end
+
 function minf(f, init, t)
     return foldl(function (k, v, r) return f(v) < f(r) and v or r end, init, t)
 end
@@ -120,7 +130,7 @@ local TILE_SIZE = 16
 local SCREEN_WIDTH = 25
 local SCREEN_HEIGHT = 20
 -- scale window up to this number
-local SCALE = 1
+local SCALE = 2
 -- set this to true for free movement instead of being bound by gravity
 local FREE_MOVEMENT = false
 local FREE_MOVEMENT_SPEED = 2
@@ -175,12 +185,12 @@ local tile_info = {
     [14] = slope(vec.v2( 0,  1), vec.v2(0, 0), vec.v2(1, 2), vec.v2(1, 0)), --  \|
     [15] = slope(vec.v2( 0,  0), vec.v2(2, 0), vec.v2(0, 1), vec.v2(2, 1)), --  /
     [16] = slope(vec.v2( 1,  0), vec.v2(2, 0), vec.v2(0, 1), vec.v2(2, 1)), -- /_
-    [17] = slope(vec.v2( 0,  0), vec.v2(2, 0), vec.v2(0, 1), vec.v2(2, 1)), -- \
-    [18] = slope(vec.v2( 1,  0), vec.v2(2, 0), vec.v2(0, 1), vec.v2(2, 1)), -- _\
-    [19] = slope(vec.v2( 0,  0), vec.v2(2, 0), vec.v2(0, 1), vec.v2(2, 1)), -- \-
-    [20] = slope(vec.v2( 1,  0), vec.v2(2, 0), vec.v2(0, 1), vec.v2(2, 1)), --  \
-    [21] = slope(vec.v2( 0,  0), vec.v2(2, 0), vec.v2(0, 1), vec.v2(2, 1)), -- -/
-    [22] = slope(vec.v2( 1,  0), vec.v2(2, 0), vec.v2(0, 1), vec.v2(2, 1)), -- /
+    [17] = slope(vec.v2( 0,  0), vec.v2(2, 1), vec.v2(0, 0), vec.v2(0, 1)), -- \
+    [18] = slope(vec.v2( 1,  0), vec.v2(2, 1), vec.v2(0, 0), vec.v2(0, 1)), -- _\
+    [19] = slope(vec.v2( 0,  0), vec.v2(0, 0), vec.v2(2, 1), vec.v2(2, 0)), -- \-
+    [20] = slope(vec.v2( 1,  0), vec.v2(0, 0), vec.v2(2, 1), vec.v2(2, 0)), --  \
+    [21] = slope(vec.v2( 0,  0), vec.v2(0, 1), vec.v2(2, 0), vec.v2(0, 0)), -- -/
+    [22] = slope(vec.v2( 1,  0), vec.v2(0, 1), vec.v2(2, 0), vec.v2(0, 0)), -- /
 }
 
 local tilemap = {
@@ -193,17 +203,17 @@ local tilemap = {
     {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 24,  0,  0,  0,  0,  0,  0,  0 },
     {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 24,  0,  0,  0,  0,  0,  0,  4 },
     {  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  4,  0 },
-    {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  0,  0,  6,  0,  0,  0,  0,  0,  0,  0,  0,  4,  0,  0 },
+    {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  0,  0,  6,  0,  0, 17, 18,  0,  0,  0,  0,  4,  0,  0 },
     {  0,  0,  0,  0,  0,  1,  0,  1,  3,  0,  0,  0,  6,  0,  0,  0,  1,  2,  0,  0,  0,  0,  0,  0,  0 },
     {  0,  0,  0,  7,  9,  0,  1,  0,  0,  1,  1,  6,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
     {  0,  0,  0,  8, 10,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  4,  0,  0,  0,  0,  0 },
     {  0,  0,  0, 13, 11,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  4,  0,  0,  0,  0,  0,  0 },
     {  0,  0,  0, 14, 12,  1,  1,  1,  1,  1,  0,  0,  0,  0,  0,  0,  0,  7,  0,  0,  0,  0,  0,  0,  0 },
-    {  0,  0,  0,  4,  3,  1,  0,  0,  0,  1,  1,  1,  2,  2,  0,  0,  0,  8,  0,  0,  0,  0,  0,  0,  0 },
-    {  1,  1,  1,  5,  6,  1,  0,  0,  0,  1,  0,  0,  0,  0,  0,  0,  0,  1,  1,  1,  1,  1,  0,  1,  0 },
-    {  1,  1,  1,  1,  1,  1,  0,  0,  0,  1,  1,  3,  0,  0,  0,  4,  1,  1,  1,  0,  1,  0,  1,  0,  1 },
-    {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  1, 15, 16,  1,  1,  0,  0,  0,  0,  0,  0,  0,  0 },
-    {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  1,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
+    {  0,  0,  0,  4,  3,  1,  0,  0,  0,  1,  1,  1,  2,  2,  0,  0,  0,  8,  0, 17, 18,  0,  3,  0,  0 },
+    {  1,  1,  1,  5,  6,  1,  0,  0,  0,  1,  0,  0,  0,  0,  0,  0,  0,  1,  0, 21, 22,  0,  6,  0,  0 },
+    {  1,  1,  1,  1,  1,  1,  0,  0,  0,  1,  1,  3,  0,  0,  0,  4,  1,  1,  1,  1,  1,  1,  1,  1,  0 },
+    {  0,  0, 13,  0,  0,  0,  0,  0,  0,  0,  0,  1,  1, 15, 16,  1,  1, 19, 20,  0,  0,  0,  0,  0,  0 },
+    {  0,  0, 14,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  1,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
 }
 
 function p2t(p) return vec.floor(p / TILE_SIZE) + vec.one end
@@ -228,6 +238,11 @@ function is_slope_facing(t, sgn)
     return is_slope(t) and sign(info_of(t).normals[1].x) == sgn
 end
 
+function are_same_slope(t, n)
+    return vec.eq(t - info_of(t).slope.origin,
+                  n - info_of(n).slope.origin)
+end
+
 function slope_diag_point(to, info, value, dim, dim_to)
     local u = value - dim(to)
     local t = rlerp(   dim(info.slope.points[1]),    dim(info.slope.points[2]), u / TILE_SIZE)
@@ -246,7 +261,8 @@ function slope_tiles(t)
     function loop(t)
         table.insert(res, t)
         for _, n in ipairs{ vec.v2(0, -1), vec.v2(0, 1), vec.v2(-1, 0), vec.v2(1, 0) } do
-            if is_slope(t+n) and vec.eq(t + n - info_of(t).slope.origin, origin)
+            if is_slope(t+n)
+            and vec.eq(t+n - info_of(t+n).slope.origin, origin)
             and not index_of(res, t+n, vec.eq) then
                 loop(t+n)
             end
@@ -276,11 +292,16 @@ local PLAYER_COLLISION_HITBOXES = {
     {
         { vec.v2( 4,  0), vec.v2(11, 10) }, -- up
         { vec.v2( 4, 22), vec.v2(11, 32) }, -- down
+    },
+    {
+        { vec.v2( 0,  0), vec.v2( 1, 31) }, -- left
+        { vec.v2(15,  0), vec.v2(16, 31) }, -- right
     }
 }
 
 -- tiles have a "border" where collisions register. this constant controls how big it is
 local TILE_TOLLERANCE = 5
+local SLOPE_TOLLERANCE = 2
 
 -- physics constant for the player, change these to control the "feel" of the game
 
@@ -386,12 +407,12 @@ while not rl.WindowShouldClose() do
     tprint("accel  = " .. tostring(accel))
 
     -- collision with ground
-    function get_tiles(box)
+    function get_tiles(box, fn)
         local res, start, endd = {}, p2t(box[1]), p2t(box[2])
         for y = start.y, endd.y do
             for x = start.x, endd.x do
                 t = vec.v2(x, y)
-                if not is_air(t) then
+                if not is_air(t) and fn(t) then
                     table.insert(res, t)
                 end
             end
@@ -418,10 +439,24 @@ while not rl.WindowShouldClose() do
                 local old_hitbox = map(function (v) return v + old_pos end, hitbox_unit)
                 local hitbox = map(function (v) return v + pos end, hitbox_unit)
                 local boxes = get_hitboxes(hitbox, collision_boxes)
-                local tiles = get_tiles(boxes[axis+1][move+1])
+                local tiles = get_tiles(boxes[axis+1][move+1], identity)
+                if axis == 0 then
+                    tiles = append(tiles, get_tiles(boxes[3][move+1], is_slope))
+                end
                 if #tiles > 0 then
                     local minf = move == 0 and function (t) return maxf(identity, -math.huge, t) end
                                            or  function (t) return minf(identity,  math.huge, t) end
+
+                    function is_over_slope(tile)
+                        local info  = info_of(tile)
+                        local dir   = b2i(info.normals[1].y < 0)
+                        local to    = t2p(tile - info.slope.origin)
+                        local yu    = slope_diag_point(
+                            to, info, old_hitbox[1].x + size.x/2, vec.x, vec.y)
+                        local y     = to.y + yu * TILE_SIZE
+                        local lteq = dir == 0 and gteq or lteq
+                        return lteq(old_hitbox[dir+1].y, y)
+                    end
 
                     function ignore_tile(tile, slopes)
                         if axis == 0 then
@@ -438,17 +473,6 @@ while not rl.WindowShouldClose() do
                         end
                         return check(tile + vec.v2(-1, 0), -1)
                             or check(tile + vec.v2( 1, 0),  1)
-                    end
-
-                    function is_over_slope(tile)
-                        local info  = info_of(tile)
-                        local dir   = b2i(info.normals[1].y < 0)
-                        local to    = t2p(tile - info.slope.origin)
-                        local yu    = slope_diag_point(
-                            to, info, old_hitbox[1].x + size.x/2, vec.x, vec.y)
-                        local y     = to.y + yu * TILE_SIZE
-                        local lteq = dir == 0 and gteq or lteq
-                        return lteq(old_hitbox[dir+1].y, y)
                     end
 
                     function get_tile_dim(tile)
@@ -490,28 +514,12 @@ while not rl.WindowShouldClose() do
                         end
                         -- check if the player is inside the slope
                         local lteq = dir == 0 and gteq or lteq
-                        local toll = TILE_TOLLERANCE * -sign(info.normals[1].y)
+                        local toll = SLOPE_TOLLERANCE * -sign(info.normals[1].y)
                         if (old_y == math.huge or lteq(old_hitbox[dir+1].y, old_y + toll))
                         and not lteq(hitbox[dir+1].y, y) then
                             return y - size.y * dir
                         end
                         return math.huge
-                    end
-
-                    function get_slope_dim_x(tile)
-                        local info       = info_of(tile)
-                        local to         = t2p(tile - info.slope.origin)
-                        local diry       = b2i(info.normals[1].y < 0)
-                        local hitbox_y   = hitbox[diry+1].y
-                        -- lowest y of normal slopes, highest y of upside-down slopes
-                        local lowest_y   = to.y + diry * info.slope.size.y * TILE_SIZE
-                        local min        = diry == 1 and math.min or math.max
-                        local y          = min(hitbox_y, lowest_y)
-                        local xu         = slope_diag_point(to, info, y, vec.y, vec.x)
-                        local x          = to.x + xu * TILE_SIZE
-                        local lt         = info.normals[1].x < 0 and lt or gt
-                        return lt(hitbox[move+1].x, x) and math.huge
-                            or x - size.x/2
                     end
 
                     function get_slope_y(slopes)
@@ -522,17 +530,27 @@ while not rl.WindowShouldClose() do
                         if #slopes < 2 then
                             return math.huge
                         end
+                        local old_slopes = slopes
+                        slopes = filter(function (t)
+                            local neighbor = t + vec.v2(move == 0 and 1 or -1, 0)
+                            return b2i(info_of(t).normals[1].x < 0) == move
+                               and not (is_slope(neighbor) and are_same_slope(t, neighbor))
+                        end, old_slopes)
                         local origs = map(function (s)
                             return s - info_of(s).slope.origin
                         end, slopes)
                         if #origs < 2 or all_eq(origs) then
                             return math.huge
                         end
-                        local contact_points =
-                            filter(function (v) return v ~= math.huge end,
-                                map(get_slope_dim_x, slopes))
-                        return #contact_points < 2 and math.huge
-                            or minf(contact_points)
+                        local old_center = old_hitbox[1].x + size.x/2
+                        local center     =     hitbox[1].x + size.x/2
+                        local p = t2p(slopes[1]).x + (move == 0 and TILE_SIZE or 0)
+                        local lteq = move == 0 and gteq or lteq
+                        local toll = SLOPE_TOLLERANCE * -sign(info_of(slopes[1]).normals[1].x)
+                        if lteq(old_center, p+toll) and not lteq(center, p) then
+                            return p - size.x/2
+                        end
+                        return math.huge
                     end
 
                     local all_slopes, others = partition(is_slope, tiles)
@@ -568,6 +586,7 @@ while not rl.WindowShouldClose() do
             player.vel = vec.set_dim(player.vel, dim, 0)
         end
     end
+    tprint(fmt.tostring("collision tiles = ", collision_tiles))
 
     local old_on_ground = player.on_ground
     player.on_ground = false
@@ -576,7 +595,6 @@ while not rl.WindowShouldClose() do
     end
 
     tprint("pos (adjusted) = " .. tostring(player.pos))
-    tprint("x diff = " .. tostring(player.pos.x - old_pos.x))
     tprint("on ground = " .. tostring(player.on_ground))
 
     player.coyote_time = (old_on_ground and not player.on_ground and player.vel.y > 0) and COYOTE_TIME_FRAMES
@@ -588,7 +606,7 @@ while not rl.WindowShouldClose() do
         local hitbox = map(function (v) return v + player.pos end, PLAYER_HITBOX)
         local hitboxes = get_hitboxes(hitbox, PLAYER_COLLISION_HITBOXES)
         local h = map(function (v) return v + vec.v2(0, JUMP_BUF_WINDOW) end, hitboxes[2][2])
-        if #get_tiles(h) > 0 then
+        if #get_tiles(h, identity) > 0 then
             player.jump_buf = true
         end
     end
@@ -627,7 +645,9 @@ while not rl.WindowShouldClose() do
                 elseif vec.eq(info.slope.origin, vec.zero) then
                     local tiles = slope_tiles(tile)
                     local color = findf(function (v)
-                        return findf(function (s) return vec.eq(v.tile, s) end, tiles)
+                        return findf(function (s)
+                            return vec.eq(v.tile, s)
+                        end, tiles)
                     end, collision_tiles) and rl.RED or rl.WHITE
                     local points = map(function (p) return orig + p * TILE_SIZE end, info.slope.points)
                     rl.DrawTriangle(points[1], points[2], points[3], color)
@@ -645,6 +665,10 @@ while not rl.WindowShouldClose() do
             rl.DrawRectangleLinesEx(rec.new(hitbox[1], hitbox[2] - hitbox[1]), 1.0, rl.BLUE)
         end
     end
+
+    local direction = vec.normalize(player.pos - old_pos)
+    local center = player.pos + (hitbox[2] - hitbox[1])/2
+    rl.DrawLineV(center, center + direction * 50, rl.YELLOW)
 
     rl.EndMode2D()
 
