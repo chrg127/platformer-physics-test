@@ -196,23 +196,23 @@ local tile_info = {
 local tilemap = {
     {  1,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
     {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
-    {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
     {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 24,  0,  0,  0,  0,  0,  0,  0 },
     {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 24,  0,  0,  0,  0,  0,  0,  0 },
     {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 24,  0,  0,  0,  0,  0,  0,  0 },
     {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 24,  0,  0,  0,  0,  0,  0,  0 },
-    {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 24,  0,  0,  0,  0,  0,  0,  4 },
-    {  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  4,  0 },
+    {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 24,  0,  0,  0,  0,  0,  0,  0 },
+    {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 24,  0,  0,  0,  0,  0,  0,  0 },
+    {  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  0,  0,  0,  0, 15, 16 },
     {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  0,  0,  6,  0,  0, 17, 18,  0,  0,  0,  0,  4,  0,  0 },
-    {  0,  0,  0,  0,  0,  1,  0,  1,  3,  0,  0,  0,  6,  0,  0,  0,  1,  2,  0,  0,  0,  0,  0,  0,  0 },
-    {  0,  0,  0,  7,  9,  0,  1,  0,  0,  1,  1,  6,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
+    {  0,  0,  0,  0,  0,  1,  0,  1,  3,  0,  0,  0,  6,  0,  0,  0,  1,  2,  0,  0,  0,  4,  0,  0,  0 },
+    {  0,  0,  0,  7,  9,  0,  1,  0,  0,  1,  1,  6,  0,  0,  0,  0,  0,  0,  0,  0,  4,  0,  0,  0,  0 },
     {  0,  0,  0,  8, 10,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  4,  0,  0,  0,  0,  0 },
     {  0,  0,  0, 13, 11,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  4,  0,  0,  0,  0,  0,  0 },
     {  0,  0,  0, 14, 12,  1,  1,  1,  1,  1,  0,  0,  0,  0,  0,  0,  0,  7,  0,  0,  0,  0,  0,  0,  0 },
     {  0,  0,  0,  4,  3,  1,  0,  0,  0,  1,  1,  1,  2,  2,  0,  0,  0,  8,  0, 17, 18,  0,  3,  0,  0 },
     {  1,  1,  1,  5,  6,  1,  0,  0,  0,  1,  0,  0,  0,  0,  0,  0,  0,  1,  0, 21, 22,  0,  6,  0,  0 },
     {  1,  1,  1,  1,  1,  1,  0,  0,  0,  1,  1,  3,  0,  0,  0,  4,  1,  1,  1,  1,  1,  1,  1,  1,  0 },
-    {  0,  0, 13,  0,  0,  0,  0,  0,  0,  0,  0,  1,  1, 15, 16,  1,  1, 19, 20,  0,  0,  0,  0,  0,  0 },
+    {  0,  0, 13,  0,  0,  0,  0,  0,  0,  0,  0,  1,  1, 15, 16,  0,  1, 19, 20,  0,  0,  0,  0,  0,  0 },
     {  0,  0, 14,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  1,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },
 }
 
@@ -279,6 +279,7 @@ local player = {
     on_ground     = false,
     coyote_time   = 0,
     jump_buf      = false,
+    slope_dir     = 0
 }
 
 local PLAYER_DRAW_SIZE = vec.v2(TILE_SIZE, TILE_SIZE * 2)
@@ -324,8 +325,8 @@ local VEL_Y_CAP = 22 * TILE_SIZE -- just under 6 pixels at 60 FPS
 local GRAVITY = 400
 -- used when pressing the jump button while falling
 local SLOW_GRAVITY = 300
-local JUMP_HEIGHT_MAX1 = 4.5 -- tiles
-local JUMP_HEIGHT_MAX2 = 5.5 -- tiles, max height is interpolated between 1 and 2
+local JUMP_HEIGHT_MAX1 = 5 -- tiles
+local JUMP_HEIGHT_MAX2 = 6 -- tiles, max height is interpolated between 1 and 2
 local JUMP_HEIGHT_MIN  = 0.2 -- tiles
 local COYOTE_TIME_FRAMES = 10
 -- how many pixels over the ground should a jump be registered?
@@ -370,6 +371,9 @@ while not rl.WindowShouldClose() do
     player.vel = player.vel + accel * dt
     player.vel.x = clamp(player.vel.x, -VEL_X_CAP, VEL_X_CAP)
     player.vel.y = clamp(player.vel.y, -VEL_Y_CAP, VEL_Y_CAP)
+    if player.slope_dir ~= 0 and sign(player.vel.x) == player.slope_dir then
+        player.vel.y = VEL_Y_CAP * gravity_dir
+    end
 
     if math.abs(player.vel.x) < 4 then
         player.vel.x = 0
@@ -428,7 +432,7 @@ while not rl.WindowShouldClose() do
         end, from)
     end
 
-    function collide_tiles(pos, vel, old_pos, hitbox_unit, collision_boxes)
+    function collide_tiles(pos, old_pos, hitbox_unit, collision_boxes)
         local size = hitbox_unit[2] - hitbox_unit[1]
         local result = {}
         for axis = 0, 1 do
@@ -578,16 +582,25 @@ while not rl.WindowShouldClose() do
     end
 
     local pos, collision_tiles = collide_tiles(
-        player.pos, player.vel, old_pos, PLAYER_HITBOX, PLAYER_COLLISION_HITBOXES
+        player.pos, old_pos, PLAYER_HITBOX, PLAYER_COLLISION_HITBOXES
     )
-    player.pos = pos
-    for _, dim in ipairs{ 0, 1 } do
-        if findf(function (v) return vec.dim(v.dir, dim+1) ~= 0 end, collision_tiles) then
-            player.vel = vec.set_dim(player.vel, dim, 0)
-        end
-    end
     tprint(fmt.tostring("collision tiles = ", collision_tiles))
 
+    player.pos = pos
+    player.slope_dir = 0
+    local calculated_vel = player.vel
+    local direction = vec.normalize(player.pos - old_pos)
+    for _, axis in ipairs{ 0, 1 } do
+        local ts = filter(function (v) return vec.dim(v.dir, axis+1) ~= 0 end, collision_tiles)
+        for _, t in ipairs(ts) do
+            if axis == 1 and is_slope(t.tile) then
+                player.slope_dir = sign(info_of(t.tile).normals[1].x)
+            end
+            player.vel = vec.set_dim(player.vel, axis, 0)
+        end
+    end
+
+    -- setup ground flag so it behaves well with gravity
     local old_on_ground = player.on_ground
     player.on_ground = false
     if findf(function (v) return vec.eq(v.dir, vec.v2(0, gravity_dir)) end, collision_tiles) then
@@ -596,6 +609,11 @@ while not rl.WindowShouldClose() do
 
     tprint("pos (adjusted) = " .. tostring(player.pos))
     tprint("on ground = " .. tostring(player.on_ground))
+    tprint("slope_dir = " .. tostring(player.slope_dir))
+
+    -- if old_on_ground and not player.on_ground and player.vel.y > 0 then
+    --     player.vel.y = 0
+    -- end
 
     player.coyote_time = (old_on_ground and not player.on_ground and player.vel.y > 0) and COYOTE_TIME_FRAMES
                       or (player.on_ground) and 0
@@ -666,9 +684,9 @@ while not rl.WindowShouldClose() do
         end
     end
 
-    local direction = vec.normalize(player.pos - old_pos)
     local center = player.pos + (hitbox[2] - hitbox[1])/2
     rl.DrawLineV(center, center + direction * 50, rl.YELLOW)
+    rl.DrawLineV(center, center + vec.normalize(calculated_vel) * 50, rl.GREEN)
 
     rl.EndMode2D()
 
