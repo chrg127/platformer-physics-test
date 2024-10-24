@@ -339,6 +339,20 @@ local SLOPE_DOWN_SPEED_START = 100
 
 local JUMP_VEL_MIN = -math.sqrt(2 * GRAVITY * JUMP_HEIGHT_MIN * TILE_SIZE)
 
+local ENTITY_MOVING_PLATFORM = 1
+local ENTITY_BOULDER = 2
+
+-- store here entities such as moving platforms and boulders
+local entity_info = {
+    [ENTITY_MOVING_PLATFORM] = { normals = { vec.v2(0, -1) }, init_dir = vec.v2(1, 0), length = 4 },
+    [ENTITY_BOULDER]         = { size = vec.v2(4, 4) },
+}
+
+local entities = {
+    { type = ENTITY_MOVING_PLATFORM, pos = vec.v2(0, 0) },
+    { type = ENTITY_BOULDER, pos = vec.v2(4, 0), vel = vec.v2(0, 0) }
+}
+
 local gravity_dir = 1
 
 local logfile = io.open("log.txt", "w")
@@ -415,6 +429,20 @@ while not rl.WindowShouldClose() do
     tprint("pos    = " .. tostring(player.pos))
     tprint("vel    = " .. tostring(player.vel))
     tprint("accel  = " .. tostring(accel))
+
+    -- now handle entities
+
+    for _, entity in ipairs(entities) do
+        local info = entity_info[entity.type]
+        if entity.type == ENTITY_MOVING_PLATFORM then
+            entity.pos = entity.pos + info.init_dir
+        elseif entity.type == ENTITY_BOULDER then
+            entity.vel = entity.vel + vec.v2(0, 10) * dt
+            entity.vel.y = clamp(entity.vel.y, 0, 10)
+            tprint(fmt.tostring("boulder vel = ", entity.vel))
+            entity.pos = entity.pos + entity.vel
+        end
+    end
 
     -- collision with ground
     function get_tiles(box, fn)
@@ -683,6 +711,13 @@ while not rl.WindowShouldClose() do
                     rl.DrawTriangle(points[1], points[2], points[3], color)
                 end
             end
+        end
+    end
+
+    for _, entity in ipairs(entities) do
+        local info = entity_info[entity.type]
+        if entity.type == ENTITY_BOULDER then
+            rl.DrawRectangleLinesEx(rec.new(entity.pos, info.size * TILE_SIZE), 1.0, rl.WHITE)
         end
     end
 
