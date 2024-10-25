@@ -21,7 +21,7 @@ function vec.y(v) return v.y end
 function vec.dim(v, d) return d == 1 and v.x or v.y end
 
 function vec.set_dim(v, d, x)
-    return vec.v2(d == 0 and x or v.x, d == 1 and x or v.y)
+    return vec.v2(d == 1 and x or v.x, d == 2 and x or v.y)
 end
 
 local rec = {}
@@ -274,7 +274,7 @@ end
 
 local player = {
     pos           = vec.v2(SCREEN_WIDTH, SCREEN_HEIGHT) * TILE_SIZE / 2
-                  - vec.v2(TILE_SIZE/2, -TILE_SIZE),
+                  + vec.v2(TILE_SIZE/2 - 8 * TILE_SIZE, -8 * TILE_SIZE),
     vel           = vec.zero,
     on_ground     = false,
     coyote_time   = 0,
@@ -344,13 +344,19 @@ local ENTITY_BOULDER = 2
 
 -- store here entities such as moving platforms and boulders
 local entity_info = {
-    [ENTITY_MOVING_PLATFORM] = { normals = { vec.v2(0, -1) }, init_dir = vec.v2(1, 0), length = 4 },
-    [ENTITY_BOULDER]         = { size = vec.v2(4, 4) },
+    [ENTITY_MOVING_PLATFORM] = {
+        normals = { vec.v2(0, -1) },
+        size = vec.v2(3, 1) * TILE_SIZE,
+        path_length = vec.v2(10, 0) * TILE_SIZE
+    },
+    [ENTITY_BOULDER] = {
+        size = vec.v2(2, 2) * TILE_SIZE,
+    },
 }
 
 local entities = {
-    { type = ENTITY_MOVING_PLATFORM, pos = vec.v2(0, 0) },
-    { type = ENTITY_BOULDER, pos = vec.v2(4, 0), vel = vec.v2(0, 0) }
+    { type = ENTITY_MOVING_PLATFORM, start_pos = t2p(vec.v2(1, 5)), pos = t2p(vec.v2(1, 5)), dir = vec.v2(6, 0) * TILE_SIZE },
+    { type = ENTITY_BOULDER, pos = t2p(vec.v2(4, 0)), vel = vec.v2(0, 0) }
 }
 
 local gravity_dir = 1
@@ -371,6 +377,23 @@ while not rl.WindowShouldClose() do
 
     tprint(tostring(rl.GetFPS()) .. " FPS")
     tprint("dt = " .. tostring(dt))
+
+    -- handle entities first
+    for _, entity in ipairs(entities) do
+        local info = entity_info[entity.type]
+        if entity.type == ENTITY_MOVING_PLATFORM then
+            entity.pos = entity.pos + entity.dir * dt
+            for _, axis in ipairs{1,2} do
+                if math.abs(vec.dim(entity.pos, axis) - vec.dim(entity.start_pos, axis)) >= vec.dim(info.path_length, axis) then
+                    entity.start_pos = vec.set_dim(entity.start_pos, axis, vec.dim(entity.start_pos, axis) + vec.dim(info.path_length, axis) * sign(vec.dim(entity.dir, axis)))
+                    entity.dir = vec.set_dim(entity.dir, axis, -vec.dim(entity.dir, axis))
+                end
+            end
+        elseif entity.type == ENTITY_BOULDER then
+            entity.vel = entity.vel + vec.v2(0, GRAVITY) * dt
+            entity.pos = entity.pos + entity.vel * dt
+        end
+    end
 
     if rl.IsKeyReleased(rl.KEY_R) then
         gravity_dir = -gravity_dir
@@ -429,20 +452,6 @@ while not rl.WindowShouldClose() do
     tprint("pos    = " .. tostring(player.pos))
     tprint("vel    = " .. tostring(player.vel))
     tprint("accel  = " .. tostring(accel))
-
-    -- now handle entities
-
-    for _, entity in ipairs(entities) do
-        local info = entity_info[entity.type]
-        if entity.type == ENTITY_MOVING_PLATFORM then
-            entity.pos = entity.pos + info.init_dir
-        elseif entity.type == ENTITY_BOULDER then
-            entity.vel = entity.vel + vec.v2(0, 10) * dt
-            entity.vel.y = clamp(entity.vel.y, 0, 10)
-            tprint(fmt.tostring("boulder vel = ", entity.vel))
-            entity.pos = entity.pos + entity.vel
-        end
-    end
 
     -- collision with ground
     function get_tiles(box, fn)
@@ -601,8 +610,8 @@ while not rl.WindowShouldClose() do
                     table.insert(dims, axis == 0 and get_slope_x(slopes) or get_slope_y(slopes))
                     local d = minf(filter(function (v) return v ~= math.huge end, dims))
                     if math.abs(d) ~= math.huge then
-                        pos = vec.set_dim(pos, axis, d)
-                        local dir = vec.set_dim(vec.zero, axis, move == 0 and -1 or 1)
+                        pos = vec.set_dim(pos, axis+1, d)
+                        local dir = vec.set_dim(vec.zero, axis+1, move == 0 and -1 or 1)
                         for _, ts in ipairs({others, slopes}) do
                             for _, t in ipairs(ts) do
                                 table.insert(result, { tile = t, dir = dir })
@@ -644,7 +653,7 @@ while not rl.WindowShouldClose() do
     local calculated_vel = player.vel -- used only for drawing
     for _, axis in ipairs{ 0, 1 } do
         if findf(function (v) return vec.dim(v.dir, axis+1) ~= 0 end, collision_tiles) then
-            player.vel = vec.set_dim(player.vel, axis, 0)
+            player.vel = vec.set_dim(player.vel, axis+1, 0)
         end
     end
 
@@ -716,8 +725,10 @@ while not rl.WindowShouldClose() do
 
     for _, entity in ipairs(entities) do
         local info = entity_info[entity.type]
-        if entity.type == ENTITY_BOULDER then
-            rl.DrawRectangleLinesEx(rec.new(entity.pos, info.size * TILE_SIZE), 1.0, rl.WHITE)
+        if entity.type == ENTITY_MOVING_PLATFORM then
+            rl.DrawRectangleRec(rec.new(entity.pos, info.size), rl.YELLOW)
+        elseif entity.type == ENTITY_BOULDER then
+            rl.DrawRectangleRec(rec.new(entity.pos, info.size), rl.GRAY)
         end
     end
 
