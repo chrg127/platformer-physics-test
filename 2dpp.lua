@@ -475,156 +475,166 @@ while not rl.WindowShouldClose() do
         end, from)
     end
 
-    function collide_tiles(pos, old_pos, hitbox_unit, collision_boxes)
+    function box_collision(hb, old_hb, axis, move, box, normals)
+        local normal = vec.set_dim(vec.zero, axis+1, move == 0 and 1 or -1)
+        local box_size = box[2] - box[1]
+        if not index_of(normals, normal, vec.eq)
+        or vec.dot(hb[1] - old_hb[1], normal) >= 0 then
+            return math.huge
+        end
+        local side  = move == 0 and 1 or 0
+        local lteq  = move == 0 and gteq or lteq
+        local old_p = vec.dim(old_hb[move+1], axis+1)
+        local box_p = vec.dim(   box[side+1], axis+1)
+        if not lteq(old_p, box_p + TILE_TOLLERANCE * -vec.dim(normal, axis+1)) then
+            return math.huge
+        end
+        return box_p - vec.dim(hb[2] - hb[1], axis+1) * move
+    end
+
+    function collide_tiles(pos, hitbox_unit, hitbox, old_hitbox, boxes, direction, size, axis, move)
+        local dim = axis == 0 and vec.x or vec.y
+        local tiles = get_tiles(boxes[axis+1][move+1], identity)
+        if axis == 0 then
+            tiles = append(tiles, get_tiles(boxes[3][move+1], is_slope))
+        end
+        if #tiles == 0 then
+            return nil, nil
+        end
+
+        function is_over_slope(tile)
+            local info  = info_of(tile)
+            local dir   = b2i(info.normals[1].y < 0)
+            local to    = t2p(tile - info.slope.origin)
+            local yu    = slope_diag_point(
+                to, info, old_hitbox[1].x + size.x/2, vec.x, vec.y)
+            local y     = to.y + yu * TILE_SIZE
+            local lteq = dir == 0 and gteq or lteq
+            return lteq(old_hitbox[dir+1].y, y)
+        end
+
+        function ignore_tile(tile, slopes)
+            if axis == 0 then
+                local side = move == 0 and -1 or 1
+                return is_slope_facing(tile + vec.v2(-side, 0), -side)
+                   and is_over_slope(tile + vec.v2(-side, 0))
+            end
+            function check(t, sgn)
+                local info = info_of(t)
+                return is_slope(t, sgn)
+                   and sign(info.normals[1].x) == sgn
+                   and index_of(slopes, t, vec.eq)
+                   and move == b2i(info.normals[1].y < 0)
+            end
+            return check(tile + vec.v2(-1, 0), -1)
+                or check(tile + vec.v2( 1, 0),  1)
+        end
+
+        function get_tile_dim(tile)
+            local pos = t2p(tile)
+            local tile_hitbox = { pos, pos + vec.v2(TILE_SIZE, TILE_SIZE) }
+            return box_collision(
+                hitbox, old_hitbox, axis, move, tile_hitbox, info_of(tile).normals
+            ) - dim(hitbox_unit[1])
+        end
+
+        function get_slope_dim(tile)
+            local info = info_of(tile)
+            local dir = b2i(info.normals[1].y < 0)
+            if dir ~= move or vec.dot(direction, info.normals[1]) >= 0 then
+                return math.huge
+            end
+            local to    = t2p(tile - info.slope.origin)
+            local y     = slope_diag_point_y(to, info,     hitbox[1].x + size.x/2)
+            local old_y = slope_diag_point_y(to, info, old_hitbox[1].x + size.x/2)
+            if y == math.huge then
+                return math.huge
+            end
+            -- check if the player is inside the slope
+            local lteq = dir == 0 and gteq or lteq
+            local toll = SLOPE_TOLLERANCE * -sign(info.normals[1].y)
+            if (old_y == math.huge or lteq(old_hitbox[dir+1].y, old_y + toll))
+            and not lteq(hitbox[dir+1].y, y) then
+                return y - size.y * dir
+            end
+            return math.huge
+        end
+
+        function get_slope_y(slopes)
+            return #slopes > 0 and get_slope_dim(slopes[1]) or math.huge
+        end
+
+        function get_slope_x(slopes)
+            if #slopes < 2 then
+                return math.huge
+            end
+            local old_slopes = slopes
+            slopes = filter(function (t)
+                local neighbor = t + vec.v2(move == 0 and 1 or -1, 0)
+                return b2i(info_of(t).normals[1].x < 0) == move
+                   and not (is_slope(neighbor) and are_same_slope(t, neighbor))
+            end, old_slopes)
+            local origs = map(function (s)
+                return s - info_of(s).slope.origin
+            end, slopes)
+            if #origs < 2 or all_eq(origs) then
+                return math.huge
+            end
+            local old_center = old_hitbox[1].x + size.x/2
+            local center     =     hitbox[1].x + size.x/2
+            local p = t2p(slopes[1]).x + (move == 0 and TILE_SIZE or 0)
+            local lteq = move == 0 and gteq or lteq
+            local toll = SLOPE_TOLLERANCE * -sign(info_of(slopes[1]).normals[1].x)
+            if lteq(old_center, p+toll) and not lteq(center, p) then
+                return p - size.x/2
+            end
+            return math.huge
+        end
+
+        local all_slopes, others = partition(is_slope, tiles)
+        local slopes = filter(function (t)
+            return t.x == p2t(hitbox[1] + size/2).x
+        end, all_slopes)
+        local dims = map(get_tile_dim, filter(function (t)
+            return not ignore_tile(t, slopes) end,
+        others))
+        table.insert(dims, axis == 0 and get_slope_x(slopes) or get_slope_y(slopes))
+        local minf = move == 0 and function (t) return maxf(identity, -math.huge, t) end
+                               or  function (t) return minf(identity,  math.huge, t) end
+        local d = minf(filter(function (v) return v ~= math.huge end, dims))
+        if math.abs(d) ~= math.huge then
+            local pos = vec.set_dim(pos, axis+1, d)
+            local dir = vec.set_dim(vec.zero, axis+1, move == 0 and -1 or 1)
+            local result = {}
+            for _, ts in ipairs({others, slopes}) do
+                for _, t in ipairs(ts) do
+                    table.insert(result, { tile = t, dir = dir })
+                end
+            end
+            return pos, result
+        end
+    end
+
+    function player_collision(pos, old_pos, hitbox_unit, collision_boxes)
         local size = hitbox_unit[2] - hitbox_unit[1]
         local result = {}
         for axis = 0, 1 do
             local direction = vec.normalize(pos - old_pos)
-            local dim = axis == 0 and vec.x or vec.y
-            local move = sign(dim(player.pos - old_pos))
             for move = 0, 1 do
                 local old_hitbox = map(function (v) return v + old_pos end, hitbox_unit)
                 local hitbox = map(function (v) return v + pos end, hitbox_unit)
                 local boxes = get_hitboxes(hitbox, collision_boxes)
-                local tiles = get_tiles(boxes[axis+1][move+1], identity)
-                if axis == 0 then
-                    tiles = append(tiles, get_tiles(boxes[3][move+1], is_slope))
-                end
-                if #tiles > 0 then
-                    local minf = move == 0 and function (t) return maxf(identity, -math.huge, t) end
-                                           or  function (t) return minf(identity,  math.huge, t) end
-
-                    function is_over_slope(tile)
-                        local info  = info_of(tile)
-                        local dir   = b2i(info.normals[1].y < 0)
-                        local to    = t2p(tile - info.slope.origin)
-                        local yu    = slope_diag_point(
-                            to, info, old_hitbox[1].x + size.x/2, vec.x, vec.y)
-                        local y     = to.y + yu * TILE_SIZE
-                        local lteq = dir == 0 and gteq or lteq
-                        return lteq(old_hitbox[dir+1].y, y)
-                    end
-
-                    function ignore_tile(tile, slopes)
-                        if axis == 0 then
-                            local side = move == 0 and -1 or 1
-                            return is_slope_facing(tile + vec.v2(-side, 0), -side)
-                               and is_over_slope(tile + vec.v2(-side, 0))
-                        end
-                        function check(t, sgn)
-                            local info = info_of(t)
-                            return is_slope(t, sgn)
-                               and sign(info.normals[1].x) == sgn
-                               and index_of(slopes, t, vec.eq)
-                               and move == b2i(info.normals[1].y < 0)
-                        end
-                        return check(tile + vec.v2(-1, 0), -1)
-                            or check(tile + vec.v2( 1, 0),  1)
-                    end
-
-                    function get_tile_dim(tile)
-                        local normals = info_of(tile).normals
-                        local res = filter(function (n)
-                            if vec.dot(direction, n) < 0 then
-                                local axis  = n.x ~= 0               and 0 or 1
-                                local side  = vec.dim(n, axis+1) > 0 and 0 or 1
-                                local side2 = side == 0 and 1 or 0
-                                local lteq  = side == 0 and gteq or lteq
-                                local old_d = vec.dim(old_hitbox[side+1], axis+1)
-                                local d     = vec.dim(    hitbox[side+1], axis+1)
-                                local td    = vec.dim(t2p(tile), axis+1) + side2 * TILE_SIZE
-                                if lteq(old_d, td + TILE_TOLLERANCE * -sign(vec.dim(n, axis+1))) then
-                                    return true
-                                end
-                            end
-                            return false
-                        end, normals)
-                        if #res == 0 then
-                            return math.huge
-                        end
-                        local points = { vec.one, vec.zero }
-                        local point = t2p(tile) + points[move+1] * TILE_SIZE
-                        return dim(point) - dim(size) * move - dim(hitbox_unit[1])
-                    end
-
-                    function get_slope_dim(tile)
-                        local info = info_of(tile)
-                        local dir = b2i(info.normals[1].y < 0)
-                        if dir ~= move or vec.dot(direction, info.normals[1]) >= 0 then
-                            return math.huge
-                        end
-                        local to    = t2p(tile - info.slope.origin)
-                        local y     = slope_diag_point_y(to, info,     hitbox[1].x + size.x/2)
-                        local old_y = slope_diag_point_y(to, info, old_hitbox[1].x + size.x/2)
-                        if y == math.huge then
-                            return math.huge
-                        end
-                        -- check if the player is inside the slope
-                        local lteq = dir == 0 and gteq or lteq
-                        local toll = SLOPE_TOLLERANCE * -sign(info.normals[1].y)
-                        if (old_y == math.huge or lteq(old_hitbox[dir+1].y, old_y + toll))
-                        and not lteq(hitbox[dir+1].y, y) then
-                            return y - size.y * dir
-                        end
-                        return math.huge
-                    end
-
-                    function get_slope_y(slopes)
-                        return #slopes > 0 and get_slope_dim(slopes[1]) or math.huge
-                    end
-
-                    function get_slope_x(slopes)
-                        if #slopes < 2 then
-                            return math.huge
-                        end
-                        local old_slopes = slopes
-                        slopes = filter(function (t)
-                            local neighbor = t + vec.v2(move == 0 and 1 or -1, 0)
-                            return b2i(info_of(t).normals[1].x < 0) == move
-                               and not (is_slope(neighbor) and are_same_slope(t, neighbor))
-                        end, old_slopes)
-                        local origs = map(function (s)
-                            return s - info_of(s).slope.origin
-                        end, slopes)
-                        if #origs < 2 or all_eq(origs) then
-                            return math.huge
-                        end
-                        local old_center = old_hitbox[1].x + size.x/2
-                        local center     =     hitbox[1].x + size.x/2
-                        local p = t2p(slopes[1]).x + (move == 0 and TILE_SIZE or 0)
-                        local lteq = move == 0 and gteq or lteq
-                        local toll = SLOPE_TOLLERANCE * -sign(info_of(slopes[1]).normals[1].x)
-                        if lteq(old_center, p+toll) and not lteq(center, p) then
-                            return p - size.x/2
-                        end
-                        return math.huge
-                    end
-
-                    local all_slopes, others = partition(is_slope, tiles)
-                    local slopes = filter(function (t)
-                        return t.x == p2t(hitbox[1] + size/2).x
-                    end, all_slopes)
-                    local dims = map(get_tile_dim, filter(function (t)
-                        return not ignore_tile(t, slopes) end,
-                    others))
-                    table.insert(dims, axis == 0 and get_slope_x(slopes) or get_slope_y(slopes))
-                    local d = minf(filter(function (v) return v ~= math.huge end, dims))
-                    if math.abs(d) ~= math.huge then
-                        pos = vec.set_dim(pos, axis+1, d)
-                        local dir = vec.set_dim(vec.zero, axis+1, move == 0 and -1 or 1)
-                        for _, ts in ipairs({others, slopes}) do
-                            for _, t in ipairs(ts) do
-                                table.insert(result, { tile = t, dir = dir })
-                            end
-                        end
-                    end
+                local p, res = collide_tiles(pos, hitbox_unit, hitbox, old_hitbox, boxes, direction, size, axis, move)
+                if p ~= nil then
+                    pos = p
+                    result = append(result, res)
                 end
             end
         end
         return pos, result
     end
 
-    local pos, collision_tiles = collide_tiles(
+    local pos, collision_tiles = player_collision(
         player.pos, old_pos, PLAYER_HITBOX, PLAYER_COLLISION_HITBOXES
     )
     tprint(fmt.tostring("collision tiles = ", collision_tiles))
