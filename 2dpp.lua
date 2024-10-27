@@ -355,8 +355,18 @@ local entity_info = {
 }
 
 local entities = {
-    { type = ENTITY_MOVING_PLATFORM, start_pos = t2p(vec.v2(1, 5)), pos = t2p(vec.v2(1, 5)), dir = vec.v2(6, 0) * TILE_SIZE },
-    { type = ENTITY_BOULDER, pos = t2p(vec.v2(4, 0)), vel = vec.v2(0, 0) }
+    {
+        type = ENTITY_MOVING_PLATFORM,
+        start_pos = t2p(vec.v2(1, 5)),
+        pos = t2p(vec.v2(1, 5)),
+        old_pos = t2p(vec.v2(1, 5)),
+        dir = vec.v2(6, 0) * TILE_SIZE
+    },
+    {
+        type = ENTITY_BOULDER,
+        pos = t2p(vec.v2(4, 0)),
+        vel = vec.v2(0, 0)
+    }
 }
 
 local gravity_dir = 1
@@ -382,6 +392,7 @@ while not rl.WindowShouldClose() do
     for _, entity in ipairs(entities) do
         local info = entity_info[entity.type]
         if entity.type == ENTITY_MOVING_PLATFORM then
+            entity.old_pos = entity.pos
             entity.pos = entity.pos + entity.dir * dt
             for _, axis in ipairs{1,2} do
                 if math.abs(vec.dim(entity.pos, axis) - vec.dim(entity.start_pos, axis)) >= vec.dim(info.path_length, axis) then
@@ -624,6 +635,31 @@ while not rl.WindowShouldClose() do
                 local old_hitbox = map(function (v) return v + old_pos end, hitbox_unit)
                 local hitbox = map(function (v) return v + pos end, hitbox_unit)
                 local boxes = get_hitboxes(hitbox, collision_boxes)
+
+                -- collision with entities
+                for _, entity in ipairs(entities) do
+                    if entity.type == ENTITY_MOVING_PLATFORM then
+                        local info = entity_info[entity.type]
+                        if rl.CheckCollisionRecs(
+                            rec.new(entity.pos, info.size),
+                            rec.new(hitbox[1], hitbox[2] - hitbox[1])
+                        ) then
+                            local p = box_collision(
+                                hitbox, old_hitbox, axis, move,
+                                { entity.pos, entity.pos + info.size },
+                                info.normals
+                            )
+                            if p ~= math.huge then
+                                -- temporary
+                                pos = vec.set_dim(pos, axis+1, p)
+                                player.vel.y = 0
+                            end
+                        end
+                    elseif entity.type == ENTITY_BOULDER then
+                    end
+                end
+
+                -- collision with tiles
                 local p, res = collide_tiles(pos, hitbox_unit, hitbox, old_hitbox, boxes, direction, size, axis, move)
                 if p ~= nil then
                     pos = p
