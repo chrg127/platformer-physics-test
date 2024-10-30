@@ -279,7 +279,8 @@ local player = {
     on_ground     = false,
     coyote_time   = 0,
     jump_buf      = false,
-    slope_dir     = 0
+    slope_dir     = 0,
+    platforms_standing = {}
 }
 
 local PLAYER_DRAW_SIZE = vec.v2(TILE_SIZE, TILE_SIZE * 2)
@@ -389,14 +390,18 @@ while not rl.WindowShouldClose() do
     tprint("dt = " .. tostring(dt))
 
     -- handle entities first
-    for _, entity in ipairs(entities) do
+    for id, entity in ipairs(entities) do
         local info = entity_info[entity.type]
         if entity.type == ENTITY_MOVING_PLATFORM then
             entity.old_pos = entity.pos
             entity.pos = entity.pos + entity.dir * dt
+            if index_of(player.platforms_standing, id) then
+                player.pos = player.pos + (entity.pos - entity.old_pos)
+            end
             for _, axis in ipairs{1,2} do
                 if math.abs(vec.dim(entity.pos, axis) - vec.dim(entity.start_pos, axis)) >= vec.dim(info.path_length, axis) then
-                    entity.start_pos = vec.set_dim(entity.start_pos, axis, vec.dim(entity.start_pos, axis) + vec.dim(info.path_length, axis) * sign(vec.dim(entity.dir, axis)))
+                    entity.start_pos = vec.set_dim(entity.start_pos, axis, vec.dim(entity.start_pos, axis)
+                                     + vec.dim(info.path_length, axis) * sign(vec.dim(entity.dir, axis)))
                     entity.dir = vec.set_dim(entity.dir, axis, -vec.dim(entity.dir, axis))
                 end
             end
@@ -729,6 +734,8 @@ while not rl.WindowShouldClose() do
     end
     tprint("jump buf = " .. tostring(player.jump_buf))
 
+    player.platforms_standing = map(function (v) return v.entity_id end, filter(function (v) return v.entity_id end, collision_tiles))
+
     camera.target = player.pos
 
     -- drawing time!
@@ -796,7 +803,7 @@ while not rl.WindowShouldClose() do
     local center = player.pos + (hitbox[2] - hitbox[1])/2
     tprint(fmt.tostring("player.pos = ", player.pos, "old_pos = ", old_pos))
     tprint(fmt.tostring("diff = ", player.pos - old_pos))
-    -- rl.DrawLineV(center, center + vec.normalize(player.pos - old_pos) * 50, rl.RED)
+    rl.DrawLineV(center, center + vec.normalize(player.pos - old_pos) * 50, rl.YELLOW)
     rl.DrawLineV(center, center + vec.normalize(calculated_vel) * 50, rl.GREEN)
 
     rl.EndMode2D()
