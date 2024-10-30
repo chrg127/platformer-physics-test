@@ -290,12 +290,10 @@ local PLAYER_COLLISION_HITBOXES = {
     {
         { vec.v2( 0,  6), vec.v2( 1, 26) }, -- left
         { vec.v2(15,  6), vec.v2(16, 26) }, -- right
-    },
-    {
+    }, {
         { vec.v2( 4,  0), vec.v2(11, 10) }, -- up
         { vec.v2( 4, 22), vec.v2(11, 32) }, -- down
-    },
-    {
+    }, {
         { vec.v2( 0,  0), vec.v2( 1, 31) }, -- left
         { vec.v2(15,  0), vec.v2(16, 31) }, -- right
     }
@@ -343,15 +341,30 @@ local JUMP_VEL_MIN = -math.sqrt(2 * GRAVITY * JUMP_HEIGHT_MIN * TILE_SIZE)
 local ENTITY_MOVING_PLATFORM = 1
 local ENTITY_BOULDER = 2
 
+function generate_collision_hitboxes(size)
+    return {
+        {
+            { vec.v2(       0,        0), vec.v2(     1, size.y) },
+            { vec.v2(size.x-1,        0), vec.v2(size.x, size.y) },
+        }, {
+            { vec.v2(       0,        0), vec.v2(size.x,      1) },
+            { vec.v2(       0, size.y-1), vec.v2(size.x, size.y) },
+        }
+    }
+end
+
 -- store here entities such as moving platforms and boulders
 local entity_info = {
     [ENTITY_MOVING_PLATFORM] = {
-        normals = { vec.v2(0, -1) },
+        -- normals = { vec.v2(0, -1) },
+        normals = { vec.v2(0, -1), vec.v2(0, 1), vec.v2(1, 0), vec.v2(-1, 0) },
         size = vec.v2(3, 1) * TILE_SIZE,
         path_length = vec.v2(10, 0) * TILE_SIZE
     },
     [ENTITY_BOULDER] = {
         size = vec.v2(2, 2) * TILE_SIZE,
+        normals = { vec.v2(0, -1), vec.v2(0, 1), vec.v2(1, 0), vec.v2(-1, 0) },
+        collision_hitboxes = generate_collision_hitboxes(vec.v2(2, 2) * TILE_SIZE)
     },
 }
 
@@ -365,6 +378,7 @@ local entities = {
     },
     {
         type = ENTITY_BOULDER,
+        old_pos = t2p(vec.v2(4, 0)),
         pos = t2p(vec.v2(4, 0)),
         vel = vec.v2(0, 0)
     }
@@ -507,10 +521,11 @@ while not rl.WindowShouldClose() do
            or  math.huge
     end
 
-    function collide_tiles(pos, hitbox_unit, hitbox, old_hitbox, boxes, direction, size, axis, move)
+    function collide_tiles(hitbox, old_hitbox, boxes, size, axis, move)
+        local direction = vec.normalize(hitbox[1] - old_hitbox[1])
         local dim = axis == 0 and vec.x or vec.y
         local tiles = get_tiles(boxes[axis+1][move+1], identity)
-        if axis == 0 then
+        if axis == 0 and boxes[3] ~= nil then
             tiles = append(tiles, get_tiles(boxes[3][move+1], is_slope))
         end
         if #tiles == 0 then
@@ -630,11 +645,10 @@ while not rl.WindowShouldClose() do
         return points, result
     end
 
-    function player_collision(pos, old_pos, hitbox_unit, collision_boxes)
+    function player_collision(pos, old_pos, hitbox_unit, collision_boxes, entity_id)
         local size = hitbox_unit[2] - hitbox_unit[1]
         local result = {}
         for axis = 0, 1 do
-            local direction = vec.normalize(pos - old_pos)
             for move = 0, 1 do
                 local old_hitbox = map(function (v) return v + old_pos end, hitbox_unit)
                 local hitbox = map(function (v) return v + pos end, hitbox_unit)
@@ -644,29 +658,46 @@ while not rl.WindowShouldClose() do
 
                 -- collision with entities
                 for id, entity in ipairs(entities) do
-                    if entity.type == ENTITY_MOVING_PLATFORM then
-                        local info = entity_info[entity.type]
-                        if rl.CheckCollisionRecs(
-                            rec.new(entity.pos, info.size),
-                            rec.new(hitbox[1], hitbox[2] - hitbox[1])
-                        ) then
-                            local p = box_collision(
-                                hitbox, old_hitbox, axis, move,
-                                { entity.pos, entity.pos + info.size },
-                                info.normals
-                            )
-                            if p ~= math.huge then
-                                local dir = vec.set_dim(vec.zero, axis+1, move == 0 and -1 or 1)
-                                table.insert(points, p)
-                                table.insert(result, { entity_id = id, dir = dir })
+                    local info = entity_info[entity.type]
+                    if entity_id ~= id then
+                        if entity.type == ENTITY_MOVING_PLATFORM then
+                            if rl.CheckCollisionRecs(
+                                rec.new(entity.pos, info.size),
+                                rec.new(hitbox[1], hitbox[2] - hitbox[1])
+                            ) then
+                                local p = box_collision(
+                                    hitbox, old_hitbox, axis, move,
+                                    { entity.pos, entity.pos + info.size },
+                                    info.normals
+                                )
+                                if p ~= math.huge then
+                                    local dir = vec.set_dim(vec.zero, axis+1, move == 0 and -1 or 1)
+                                    table.insert(points, p)
+                                    table.insert(result, { entity_id = id, dir = dir })
+                                end
+                            end
+                        elseif entity.type == ENTITY_BOULDER then
+                            if rl.CheckCollisionRecs(
+                                rec.new(entity.pos, info.size),
+                                rec.new(hitbox[1], hitbox[2] - hitbox[1])
+                            ) then
+                                local p = box_collision(
+                                    hitbox, old_hitbox, axis, move,
+                                    { entity.pos, entity.pos + info.size },
+                                    info.normals
+                                )
+                                if p ~= math.huge then
+                                    local dir = vec.set_dim(vec.zero, axis+1, move == 0 and -1 or 1)
+                                    table.insert(points, p)
+                                    table.insert(result, { entity_id = id, dir = dir })
+                                end
                             end
                         end
-                    elseif entity.type == ENTITY_BOULDER then
                     end
                 end
 
                 -- collision with tiles
-                local ps, res = collide_tiles(pos, hitbox_unit, hitbox, old_hitbox, boxes, direction, size, axis, move)
+                local ps, res = collide_tiles(hitbox, old_hitbox, boxes, size, axis, move)
                 points = append(points, ps)
                 if #points > 0 then
                     local minf = move == 0 and maxf or minf
@@ -678,6 +709,23 @@ while not rl.WindowShouldClose() do
             end
         end
         return pos, result
+    end
+
+    -- first handle entities that collide with ground
+    for id, entity in ipairs(entities) do
+        local info = entity_info[entity.type]
+        if entity.type == ENTITY_BOULDER then
+            pos, collisions = player_collision(
+                entity.pos, entity.old_pos, { vec.zero, info.size },
+                info.collision_hitboxes, id
+            )
+            entity.pos = pos
+            for _, axis in ipairs{ 0, 1 } do
+                if findf(function (v) return vec.dim(v.dir, axis+1) ~= 0 end, collisions) then
+                    entity.vel = vec.set_dim(entity.vel, axis+1, 0)
+                end
+            end
+        end
     end
 
     local pos, collision_tiles = player_collision(
