@@ -1,11 +1,9 @@
-local ffi = require "ffi"
 local fmt = require "fmt"
 
 local vec = {}
 
 vec.one  = rl.new("Vector2", 1, 1)
 vec.zero = rl.new("Vector2", 0, 0)
-vec.huge = rl.new("Vector2", math.huge, math.huge)
 
 function vec.v2(x, y) return rl.new("Vector2", x, y) end
 function vec.normalize(v) return rl.Vector2Normalize(v) end
@@ -24,9 +22,7 @@ function vec.set_dim(v, d, x)
     return vec.v2(d == 1 and x or v.x, d == 2 and x or v.y)
 end
 
-local rec = {}
-
-function rec.new(pos, size)
+function rec(pos, size)
     return rl.new("Rectangle", pos.x, pos.y, size.x, size.y)
 end
 
@@ -42,6 +38,15 @@ function clamp(x, min, max) return rl.Clamp(x, min, max) end
 function lerp(a, b, t) return rl.Lerp(a, b, t) end
 function rlerp(a, b, v) return rl.Normalize(v, a, b) end
 
+function find(t, value, comp)
+    for i, v in ipairs(t) do
+        if comp ~= nil and comp(value, v) or value == v then
+            return i
+        end
+    end
+    return false
+end
+
 function findf(proc, t)
     for _, v in ipairs(t) do
         if proc(v) then
@@ -51,27 +56,18 @@ function findf(proc, t)
     return false
 end
 
-function index_of(t, value, comp)
-    for i, v in ipairs(t) do
-        if comp ~= nil and comp(value, v) or value == v then
-            return i
-        end
-    end
-    return false
-end
-
 function map(fn, t)
     local r = {}
-    for _, v in pairs(t) do
-        table.insert(r, fn(v))
+    for i, v in ipairs(t) do
+        table.insert(r, fn(v, i))
     end
     return r
 end
 
 function filter(pred, t)
     local r = {}
-    for _, v in ipairs(t) do
-        if pred(v) then
+    for i, v in ipairs(t) do
+        if pred(v, i) then
             table.insert(r, v)
         end
     end
@@ -113,15 +109,7 @@ function partition(pred, t)
 end
 
 function all_eq(t)
-    if #t == 0 then
-        return true
-    end
-    for i = 2, #t do
-        if not vec.eq(t[i], t[1]) then
-            return false
-        end
-    end
-    return true
+    return #t == 0 or not findf(function (v) return not vec.eq(v, t[1]) end, t)
 end
 
 -- our game uses 16x16 tiles
@@ -148,8 +136,8 @@ local buffer = rl.LoadRenderTexture(SCREEN_WIDTH * TILE_SIZE, SCREEN_HEIGHT * TI
 local camera = rl.new("Camera2D",
     vec.v2(SCREEN_WIDTH, SCREEN_HEIGHT) * TILE_SIZE / 2, vec.v2(0, 0), 0, 1)
 
+-- assumes a and b are in counter-clockwise order
 function get_normal(a, b)
-    -- assumes a and b are in counter-clockwise order
     return vec.normalize(vec.rotate(a - b, -math.pi/2))
 end
 
@@ -238,7 +226,7 @@ function is_slope_facing(t, sgn)
     return is_slope(t) and sign(info_of(t).normals[1].x) == sgn
 end
 
-function are_same_slope(t, n)
+function same_slope(t, n)
     return vec.eq(t - info_of(t).slope.origin,
                   n - info_of(n).slope.origin)
 end
@@ -263,7 +251,7 @@ function slope_tiles(t)
         for _, n in ipairs{ vec.v2(0, -1), vec.v2(0, 1), vec.v2(-1, 0), vec.v2(1, 0) } do
             if is_slope(t+n)
             and vec.eq(t+n - info_of(t+n).slope.origin, origin)
-            and not index_of(res, t+n, vec.eq) then
+            and not find(res, t+n, vec.eq) then
                 loop(t+n)
             end
         end
@@ -409,7 +397,7 @@ while not rl.WindowShouldClose() do
         if entity.type == ENTITY_MOVING_PLATFORM then
             entity.old_pos = entity.pos
             entity.pos = entity.pos + entity.dir * dt
-            if index_of(player.platforms_standing, id) then
+            if find(player.platforms_standing, id) then
                 player.pos = player.pos + (entity.pos - entity.old_pos)
             end
             for _, axis in ipairs{1,2} do
@@ -483,7 +471,7 @@ while not rl.WindowShouldClose() do
     tprint("vel    = " .. tostring(player.vel))
     tprint("accel  = " .. tostring(accel))
 
-    -- collision with ground
+    -- collisions
     function get_tiles(box, fn)
         local res, start, endd = {}, p2t(box[1]), p2t(box[2])
         for y = start.y, endd.y do
@@ -508,7 +496,7 @@ while not rl.WindowShouldClose() do
     function box_collision(hb, old_hb, axis, move, box, normals)
         local normal = vec.set_dim(vec.zero, axis+1, move == 0 and 1 or -1)
         local box_size = box[2] - box[1]
-        if not index_of(normals, normal, vec.eq)
+        if not find(normals, normal, vec.eq)
         or vec.dot(hb[1] - old_hb[1], normal) >= 0 then
             return math.huge
         end
@@ -523,7 +511,6 @@ while not rl.WindowShouldClose() do
 
     function collide_tiles(hitbox, old_hitbox, boxes, size, axis, move)
         local direction = vec.normalize(hitbox[1] - old_hitbox[1])
-        local dim = axis == 0 and vec.x or vec.y
         local tiles = get_tiles(boxes[axis+1][move+1], identity)
         if axis == 0 and boxes[3] ~= nil then
             tiles = append(tiles, get_tiles(boxes[3][move+1], is_slope))
@@ -553,7 +540,7 @@ while not rl.WindowShouldClose() do
                 local info = info_of(t)
                 return is_slope(t, sgn)
                    and sign(info.normals[1].x) == sgn
-                   and index_of(slopes, t, vec.eq)
+                   and find(slopes, t, vec.eq)
                    and move == b2i(info.normals[1].y < 0)
             end
             return check(tile + vec.v2(-1, 0), -1)
@@ -602,7 +589,7 @@ while not rl.WindowShouldClose() do
             slopes = filter(function (t)
                 local neighbor = t + vec.v2(move == 0 and 1 or -1, 0)
                 return b2i(info_of(t).normals[1].x < 0) == move
-                   and not (is_slope(neighbor) and are_same_slope(t, neighbor))
+                   and not (is_slope(neighbor) and same_slope(t, neighbor))
             end, old_slopes)
             local origs = map(function (s)
                 return s - info_of(s).slope.origin
@@ -645,6 +632,16 @@ while not rl.WindowShouldClose() do
         return points, result
     end
 
+    function get_entities(pos, size, entity_id)
+        local r = rec(pos, size)
+        -- dumb loop over every entity. this is where one could use something smarter, e.g. quadtrees
+        return filter(function (e)
+            local info = entity_info[e.entity.type]
+            return entity_id ~= e.id
+               and rl.CheckCollisionRecs(r, rec(e.entity.pos, info.size))
+        end, map(function (e, i) return { id = i, entity = e } end, entities))
+    end
+
     function player_collision(pos, old_pos, hitbox_unit, collision_boxes, entity_id)
         local size = hitbox_unit[2] - hitbox_unit[1]
         local result = {}
@@ -657,54 +654,33 @@ while not rl.WindowShouldClose() do
                 local points = {}
 
                 -- collision with entities
-                for id, entity in ipairs(entities) do
-                    local info = entity_info[entity.type]
-                    if entity_id ~= id then
-                        if entity.type == ENTITY_MOVING_PLATFORM then
-                            if rl.CheckCollisionRecs(
-                                rec.new(entity.pos, info.size),
-                                rec.new(hitbox[1], hitbox[2] - hitbox[1])
-                            ) then
-                                local p = box_collision(
-                                    hitbox, old_hitbox, axis, move,
-                                    { entity.pos, entity.pos + info.size },
-                                    info.normals
-                                )
-                                if p ~= math.huge then
-                                    local dir = vec.set_dim(vec.zero, axis+1, move == 0 and -1 or 1)
-                                    table.insert(points, p)
-                                    table.insert(result, { entity_id = id, dir = dir })
-                                end
-                            end
-                        elseif entity.type == ENTITY_BOULDER then
-                            if rl.CheckCollisionRecs(
-                                rec.new(entity.pos, info.size),
-                                rec.new(hitbox[1], hitbox[2] - hitbox[1])
-                            ) then
-                                local p = box_collision(
-                                    hitbox, old_hitbox, axis, move,
-                                    { entity.pos, entity.pos + info.size },
-                                    info.normals
-                                )
-                                if p ~= math.huge then
-                                    local dir = vec.set_dim(vec.zero, axis+1, move == 0 and -1 or 1)
-                                    table.insert(points, p)
-                                    table.insert(result, { entity_id = id, dir = dir })
-                                end
-                            end
-                        end
+                local r = rec(hitbox[1], size)
+                for _, e in ipairs(get_entities(hitbox[1], size, entity_id)) do
+                    local info = entity_info[e.entity.type]
+                    -- yes, every entity defined uses box collisions
+                    -- if there was an entity that didn't, i'd probably try
+                    -- putting this stuff in a function
+                    local p = box_collision(
+                        hitbox, old_hitbox, axis, move,
+                        { e.entity.pos, e.entity.pos + info.size },
+                        info.normals
+                    )
+                    if p ~= math.huge then
+                        local dir = vec.set_dim(vec.zero, axis+1, move == 0 and -1 or 1)
+                        table.insert(points, p)
+                        table.insert(result, { entity_id = e.id, dir = dir })
                     end
                 end
 
                 -- collision with tiles
                 local ps, res = collide_tiles(hitbox, old_hitbox, boxes, size, axis, move)
                 points = append(points, ps)
+                result = append(result, res)
+
                 if #points > 0 then
                     local minf = move == 0 and maxf or minf
                     local p = minf(identity, points)
-                    local dim = axis == 0 and vec.x or vec.y
-                    pos = vec.set_dim(pos, axis+1, p - dim(size) * move)
-                    result = append(result, res)
+                    pos = vec.set_dim(pos, axis+1, p - vec.dim(size, axis+1) * move)
                 end
             end
         end
@@ -728,10 +704,10 @@ while not rl.WindowShouldClose() do
         end
     end
 
-    local pos, collision_tiles = player_collision(
+    -- then handle the player
+    local pos, collisions = player_collision(
         player.pos, old_pos, PLAYER_HITBOX, PLAYER_COLLISION_HITBOXES
     )
-    tprint(fmt.tostring("collision tiles = ", collision_tiles))
 
     player.pos = pos
     tprint("pos (adjusted) = " .. tostring(player.pos))
@@ -740,7 +716,7 @@ while not rl.WindowShouldClose() do
     local old_on_ground = player.on_ground
     player.on_ground = findf(function (v)
         return vec.eq(v.dir, vec.v2(0, gravity_dir))
-    end, collision_tiles)
+    end, collisions)
         and true or false
     tprint("on ground = " .. tostring(player.on_ground))
     tprint("old ground = " .. tostring(old_on_ground))
@@ -756,14 +732,14 @@ while not rl.WindowShouldClose() do
 
     local calculated_vel = player.vel -- used only for drawing
     for _, axis in ipairs{ 0, 1 } do
-        if findf(function (v) return vec.dim(v.dir, axis+1) ~= 0 end, collision_tiles) then
+        if findf(function (v) return vec.dim(v.dir, axis+1) ~= 0 end, collisions) then
             player.vel = vec.set_dim(player.vel, axis+1, 0)
         end
     end
 
     local collided_slope = findf(function (v)
         return v.tile ~= nil and is_slope(v.tile) and vec.dim(v.dir, 2) ~= 0
-    end, collision_tiles)
+    end, collisions)
     player.slope_dir = collided_slope and sign(info_of(collided_slope.tile).normals[1].x) or 0
     tprint("slope_dir = " .. tostring(player.slope_dir))
 
@@ -782,7 +758,8 @@ while not rl.WindowShouldClose() do
     end
     tprint("jump buf = " .. tostring(player.jump_buf))
 
-    player.platforms_standing = map(function (v) return v.entity_id end, filter(function (v) return v.entity_id end, collision_tiles))
+    player.platforms_standing = map(function (v) return v.entity_id end,
+                                    filter(function (v) return v.entity_id end, collisions))
 
     camera.target = player.pos
 
@@ -810,7 +787,7 @@ while not rl.WindowShouldClose() do
                 if info.slope == nil then
                     local color = findf(function (v)
                         return v.tile ~= nil and vec.eq(v.tile, tile)
-                    end, collision_tiles) and rl.RED or rl.WHITE
+                    end, collisions) and rl.RED or rl.WHITE
                     for _, n in ipairs(info.normals) do
                         local ps = n2ps(n)
                         rl.DrawLineV(orig + ps[1] * TILE_SIZE, orig + ps[2] * TILE_SIZE, color)
@@ -821,7 +798,7 @@ while not rl.WindowShouldClose() do
                         return v.tile ~= nil and findf(function (s)
                             return vec.eq(v.tile, s)
                         end, tiles)
-                    end, collision_tiles) and rl.RED or rl.WHITE
+                    end, collisions) and rl.RED or rl.WHITE
                     local points = map(function (p) return orig + p * TILE_SIZE end, info.slope.points)
                     rl.DrawTriangle(points[1], points[2], points[3], color)
                 end
@@ -832,25 +809,23 @@ while not rl.WindowShouldClose() do
     for _, entity in ipairs(entities) do
         local info = entity_info[entity.type]
         if entity.type == ENTITY_MOVING_PLATFORM then
-            rl.DrawRectangleRec(rec.new(entity.pos, info.size), rl.YELLOW)
+            rl.DrawRectangleRec(rec(entity.pos, info.size), rl.YELLOW)
         elseif entity.type == ENTITY_BOULDER then
-            rl.DrawRectangleRec(rec.new(entity.pos, info.size), rl.GRAY)
+            rl.DrawRectangleRec(rec(entity.pos, info.size), rl.GRAY)
         end
     end
 
-    rl.DrawRectangleLinesEx(rec.new(player.pos, PLAYER_DRAW_SIZE), 1.0, rl.RED)
+    rl.DrawRectangleLinesEx(rec(player.pos, PLAYER_DRAW_SIZE), 1.0, rl.RED)
 
     local hitbox = map(function (v) return v + player.pos end, PLAYER_HITBOX)
     local hitboxes = get_hitboxes(hitbox, PLAYER_COLLISION_HITBOXES)
     for _, axis in ipairs(hitboxes) do
         for _, hitbox in ipairs(axis) do
-            rl.DrawRectangleLinesEx(rec.new(hitbox[1], hitbox[2] - hitbox[1]), 1.0, rl.BLUE)
+            rl.DrawRectangleLinesEx(rec(hitbox[1], hitbox[2] - hitbox[1]), 1.0, rl.BLUE)
         end
     end
 
     local center = player.pos + (hitbox[2] - hitbox[1])/2
-    tprint(fmt.tostring("player.pos = ", player.pos, "old_pos = ", old_pos))
-    tprint(fmt.tostring("diff = ", player.pos - old_pos))
     rl.DrawLineV(center, center + vec.normalize(player.pos - old_pos) * 50, rl.YELLOW)
     rl.DrawLineV(center, center + vec.normalize(calculated_vel) * 50, rl.GREEN)
 
@@ -864,8 +839,8 @@ while not rl.WindowShouldClose() do
 
     rl.DrawTexturePro(
         buffer.texture,
-        rec.new(vec.zero, vec.v2(SCREEN_WIDTH * TILE_SIZE        , -SCREEN_HEIGHT * TILE_SIZE        )),
-        rec.new(vec.zero, vec.v2(SCREEN_WIDTH * TILE_SIZE * SCALE,  SCREEN_HEIGHT * TILE_SIZE * SCALE)),
+        rec(vec.zero, vec.v2(SCREEN_WIDTH * TILE_SIZE        , -SCREEN_HEIGHT * TILE_SIZE        )),
+        rec(vec.zero, vec.v2(SCREEN_WIDTH * TILE_SIZE * SCALE,  SCREEN_HEIGHT * TILE_SIZE * SCALE)),
         vec.zero, 0,
         rl.WHITE
     )
