@@ -9,7 +9,6 @@ function vec.v2(x, y) return rl.new("Vector2", x, y) end
 function vec.normalize(v) return rl.Vector2Normalize(v) end
 function vec.rotate(v, angle) return rl.Vector2Rotate(v, angle) end
 function vec.dot(a, b) return rl.Vector2DotProduct(a, b) end
-
 function vec.floor(v) return vec.v2(math.floor(v.x), math.floor(v.y)) end
 function vec.abs(v) return vec.v2(math.abs(v.x), math.abs(v.y)) end
 function vec.eq(a, b) return rl.Vector2Equals(a, b) == 1 end
@@ -260,6 +259,10 @@ function slope_tiles(t)
     return res
 end
 
+-- tiles have a "border" where collisions register. this constant controls how big it is
+local TILE_TOLLERANCE = 5
+local SLOPE_TOLLERANCE = 2
+
 local player = {
     pos           = vec.v2(SCREEN_WIDTH, SCREEN_HEIGHT) * TILE_SIZE / 2
                   + vec.v2(TILE_SIZE/2 - 8 * TILE_SIZE, -8 * TILE_SIZE),
@@ -274,22 +277,22 @@ local player = {
 local PLAYER_DRAW_SIZE = vec.v2(TILE_SIZE, TILE_SIZE * 2)
 local PLAYER_HITBOX = { vec.v2(0, 0), vec.v2(TILE_SIZE-0, TILE_SIZE*2) }
 
-local PLAYER_COLLISION_HITBOXES = {
-    {
-        { vec.v2( 0,  6), vec.v2( 1, 26) }, -- left
-        { vec.v2(15,  6), vec.v2(16, 26) }, -- right
-    }, {
-        { vec.v2( 4,  0), vec.v2(11, 10) }, -- up
-        { vec.v2( 4, 22), vec.v2(11, 32) }, -- down
-    }, {
-        { vec.v2( 0,  0), vec.v2( 1, 31) }, -- left
-        { vec.v2(15,  0), vec.v2(16, 31) }, -- right
+function generate_collision_hitboxes(hb, offs)
+    return {
+        {
+            { vec.v2(hb[1].x  , hb[1].y + offs[1]), vec.v2(hb[1].x+1, hb[2].y - offs[1]) }, -- left
+            { vec.v2(hb[2].x-1, hb[1].y + offs[1]), vec.v2(hb[2].x  , hb[2].y - offs[1]) }, -- right
+        }, {
+            { vec.v2(hb[1].x + offs[2], hb[1].y   ), vec.v2(hb[2].x - offs[2], hb[1].y+10) }, -- up
+            { vec.v2(hb[1].x + offs[2], hb[2].y-10), vec.v2(hb[2].x - offs[2], hb[2].y   ) }, -- down
+        }, {
+            { vec.v2(hb[1].x  , hb[1].y), vec.v2(hb[1].x+1, hb[2].y) }, -- left, for slopes
+            { vec.v2(hb[2].x-1, hb[1].y), vec.v2(hb[2].x  , hb[2].y) }, -- right, for slopes
+        }
     }
-}
+end
 
--- tiles have a "border" where collisions register. this constant controls how big it is
-local TILE_TOLLERANCE = 5
-local SLOPE_TOLLERANCE = 2
+local PLAYER_COLLISION_HITBOXES = generate_collision_hitboxes(PLAYER_HITBOX, { TILE_TOLLERANCE, 4 })
 
 -- physics constant for the player, change these to control the "feel" of the game
 
@@ -329,18 +332,6 @@ local JUMP_VEL_MIN = -math.sqrt(2 * GRAVITY * JUMP_HEIGHT_MIN * TILE_SIZE)
 local ENTITY_MOVING_PLATFORM = 1
 local ENTITY_BOULDER = 2
 
-function generate_collision_hitboxes(size)
-    return {
-        {
-            { vec.v2(       0,        0), vec.v2(     1, size.y) },
-            { vec.v2(size.x-1,        0), vec.v2(size.x, size.y) },
-        }, {
-            { vec.v2(       0,        0), vec.v2(size.x,      1) },
-            { vec.v2(       0, size.y-1), vec.v2(size.x, size.y) },
-        }
-    }
-end
-
 -- store here entities such as moving platforms and boulders
 local entity_info = {
     [ENTITY_MOVING_PLATFORM] = {
@@ -352,7 +343,7 @@ local entity_info = {
     [ENTITY_BOULDER] = {
         size = vec.v2(2, 2) * TILE_SIZE,
         normals = { vec.v2(0, -1), vec.v2(0, 1), vec.v2(1, 0), vec.v2(-1, 0) },
-        collision_hitboxes = generate_collision_hitboxes(vec.v2(2, 2) * TILE_SIZE)
+        collision_hitboxes = generate_collision_hitboxes({ vec.zero, vec.v2(2, 2) * TILE_SIZE }, { 0, 0 })
     },
 }
 
@@ -409,6 +400,7 @@ while not rl.WindowShouldClose() do
             end
         elseif entity.type == ENTITY_BOULDER then
             entity.vel = entity.vel + vec.v2(0, GRAVITY) * dt
+            entity.old_pos = entity.pos
             entity.pos = entity.pos + entity.vel * dt
         end
     end
@@ -493,20 +485,25 @@ while not rl.WindowShouldClose() do
         end, from)
     end
 
-    function box_collision(hb, old_hb, axis, move, box, normals)
-        local normal = vec.set_dim(vec.zero, axis+1, move == 0 and 1 or -1)
-        local box_size = box[2] - box[1]
+    -- compute collision point of box a against box b, with b's normals
+    function box_collision(a, old_a, b, old_b, axis, side_a, normals)
+        local normal = vec.set_dim(vec.zero, axis+1, side_a == 0 and 1 or -1)
+        local ref = axis == 0 and vec.x or vec.y
+        local box_size = b[2] - b[1]
+        local a_dir = a[1] - old_a[1]
+        local b_dir = b[1] - old_b[1]
         if not find(normals, normal, vec.eq)
-        or vec.dot(hb[1] - old_hb[1], normal) >= 0 then
+        or vec.dot(a_dir, normal) >= 0 and ref(a_dir) ~= 0
+           and math.abs(ref(a_dir)) >= math.abs(ref(b_dir))
+        then
             return math.huge
         end
-        local side  = move == 0 and 1 or 0
-        local lteq  = move == 0 and gteq or lteq
-        local old_p = vec.dim(old_hb[move+1], axis+1)
-        local box_p = vec.dim(   box[side+1], axis+1)
-        return lteq(old_p, box_p + TILE_TOLLERANCE * -vec.dim(normal, axis+1))
-           and box_p
-           or  math.huge
+        local side_b = side_a == 0 and 1 or 0
+        local ap = ref(old_a[side_a+1])
+        local bp = ref(    b[side_b+1])
+        local lteq   = side_a == 0 and gteq or lteq
+        return lteq(ap, bp + TILE_TOLLERANCE * -vec.dim(normal, axis+1))
+           and bp or math.huge
     end
 
     function collide_tiles(hitbox, old_hitbox, boxes, size, axis, move)
@@ -551,7 +548,8 @@ while not rl.WindowShouldClose() do
             local pos = t2p(tile)
             local tile_hitbox = { pos, pos + vec.v2(TILE_SIZE, TILE_SIZE) }
             return box_collision(
-                hitbox, old_hitbox, axis, move, tile_hitbox, info_of(tile).normals
+                hitbox, old_hitbox, tile_hitbox, tile_hitbox,
+                axis, move, info_of(tile).normals
             )
         end
 
@@ -661,9 +659,10 @@ while not rl.WindowShouldClose() do
                     -- if there was an entity that didn't, i'd probably try
                     -- putting this stuff in a function
                     local p = box_collision(
-                        hitbox, old_hitbox, axis, move,
+                        hitbox, old_hitbox,
                         { e.entity.pos, e.entity.pos + info.size },
-                        info.normals
+                        { e.entity.old_pos, e.entity.old_pos + info.size },
+                         axis, move, info.normals
                     )
                     if p ~= math.huge then
                         local dir = vec.set_dim(vec.zero, axis+1, move == 0 and -1 or 1)
