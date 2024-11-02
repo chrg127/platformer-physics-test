@@ -271,7 +271,6 @@ local player = {
     coyote_time   = 0,
     jump_buf      = false,
     slope_dir     = 0,
-    platforms_standing = {}
 }
 
 local PLAYER_DRAW_SIZE = vec.v2(TILE_SIZE, TILE_SIZE * 2)
@@ -338,29 +337,40 @@ local entity_info = {
         -- normals = { vec.v2(0, -1) },
         normals = { vec.v2(0, -1), vec.v2(0, 1), vec.v2(1, 0), vec.v2(-1, 0) },
         size = vec.v2(3, 1) * TILE_SIZE,
-        path_length = vec.v2(10, 0) * TILE_SIZE
+        path_length = vec.v2(10, 0) * TILE_SIZE,
     },
     [ENTITY_BOULDER] = {
         size = vec.v2(2, 2) * TILE_SIZE,
         normals = { vec.v2(0, -1), vec.v2(0, 1), vec.v2(1, 0), vec.v2(-1, 0) },
-        collision_hitboxes = generate_collision_hitboxes({ vec.zero, vec.v2(2, 2) * TILE_SIZE }, { 0, 0 })
+        collision_hitboxes = generate_collision_hitboxes({ vec.zero, vec.v2(2, 2) * TILE_SIZE }, { 5, 0 })
     },
 }
 
-local entities = {
-    {
+function moving_platform(pos, dir)
+    return {
         type = ENTITY_MOVING_PLATFORM,
-        start_pos = t2p(vec.v2(1, 5)),
-        pos = t2p(vec.v2(1, 5)),
-        old_pos = t2p(vec.v2(1, 5)),
-        dir = vec.v2(6, 0) * TILE_SIZE
-    },
-    {
-        type = ENTITY_BOULDER,
-        old_pos = t2p(vec.v2(4, 0)),
-        pos = t2p(vec.v2(4, 0)),
-        vel = vec.v2(0, 0)
+        start_pos = t2p(pos),
+        pos = t2p(pos),
+        old_pos = t2p(pos),
+        dir = dir * TILE_SIZE,
+        carrying = {},
     }
+end
+
+function boulder(pos)
+    return {
+        type = ENTITY_BOULDER,
+        old_pos = t2p(pos),
+        pos = t2p(pos),
+        vel = vec.v2(0, 0),
+        carrying = {},
+    }
+end
+
+local entities = {
+    moving_platform(vec.v2(-3, 7), vec.v2(6, 0)),
+    boulder(vec.v2(1, 0)),
+    -- boulder(vec.v2(4, 6)),
 }
 
 local gravity_dir = 1
@@ -382,15 +392,30 @@ while not rl.WindowShouldClose() do
     tprint(tostring(rl.GetFPS()) .. " FPS")
     tprint("dt = " .. tostring(dt))
 
-    -- handle entities first
+    if rl.IsKeyReleased(rl.KEY_R) then
+        gravity_dir = -gravity_dir
+    end
+
+    function carry_entities(ids, movement)
+        for _, id in ipairs(ids) do
+            if id == -1 then
+                player.pos = player.pos + movement
+            else
+                entities[id].pos = entities[id].pos + movement
+                carry_entities(entities[id].carrying, movement)
+            end
+        end
+    end
+
+    -- first step entities that can carry stuff, but can't be carried
     for id, entity in ipairs(entities) do
         local info = entity_info[entity.type]
         if entity.type == ENTITY_MOVING_PLATFORM then
             entity.old_pos = entity.pos
             entity.pos = entity.pos + entity.dir * dt
-            if find(player.platforms_standing, id) then
-                player.pos = player.pos + (entity.pos - entity.old_pos)
-            end
+            -- handle carried entities
+            carry_entities(entity.carrying, entity.dir * dt)
+            -- handle direction change
             for _, axis in ipairs{1,2} do
                 if math.abs(vec.dim(entity.pos, axis) - vec.dim(entity.start_pos, axis)) >= vec.dim(info.path_length, axis) then
                     entity.start_pos = vec.set_dim(entity.start_pos, axis, vec.dim(entity.start_pos, axis)
@@ -398,15 +423,19 @@ while not rl.WindowShouldClose() do
                     entity.dir = vec.set_dim(entity.dir, axis, -vec.dim(entity.dir, axis))
                 end
             end
-        elseif entity.type == ENTITY_BOULDER then
-            entity.vel = entity.vel + vec.v2(0, GRAVITY) * dt
-            entity.old_pos = entity.pos
-            entity.pos = entity.pos + entity.vel * dt
+            entity.carrying = {}
         end
     end
 
-    if rl.IsKeyReleased(rl.KEY_R) then
-        gravity_dir = -gravity_dir
+    -- handle everything else, including the player
+    for id, entity in ipairs(entities) do
+        local info = entity_info[entity.type]
+        if entity.type == ENTITY_BOULDER then
+            entity.vel = entity.vel + vec.v2(0, GRAVITY) * dt
+            entity.old_pos = entity.pos
+            entity.pos = entity.pos + entity.vel * dt
+            entity.carrying = {}
+        end
     end
 
     -- player physics
@@ -700,6 +729,11 @@ while not rl.WindowShouldClose() do
                     entity.vel = vec.set_dim(entity.vel, axis+1, 0)
                 end
             end
+            for _, e in ipairs(filter(function (v) return v.entity_id end, collisions)) do
+                if entities[e.entity_id].type == ENTITY_MOVING_PLATFORM then
+                    table.insert(entities[e.entity_id].carrying, id)
+                end
+            end
         end
     end
 
@@ -707,9 +741,10 @@ while not rl.WindowShouldClose() do
     local pos, collisions = player_collision(
         player.pos, old_pos, PLAYER_HITBOX, PLAYER_COLLISION_HITBOXES
     )
-
     player.pos = pos
     tprint("pos (adjusted) = " .. tostring(player.pos))
+
+    tprint(fmt.tostring("collisions = ", collisions))
 
     -- setup ground flag so it behaves well with gravity
     local old_on_ground = player.on_ground
@@ -730,11 +765,17 @@ while not rl.WindowShouldClose() do
     end
 
     local calculated_vel = player.vel -- used only for drawing
+    local direction = player.vel
     for _, axis in ipairs{ 0, 1 } do
-        if findf(function (v) return vec.dim(v.dir, axis+1) ~= 0 end, collisions) then
+        if findf(function (v)
+            local d = vec.dim(v.dir, axis+1)
+            return d ~= 0 and sign(d) == sign(vec.dim(direction, axis+1))
+        end, collisions) then
             player.vel = vec.set_dim(player.vel, axis+1, 0)
         end
     end
+
+    tprint("vel (adjusted) = " .. tostring(player.vel))
 
     local collided_slope = findf(function (v)
         return v.tile ~= nil and is_slope(v.tile) and vec.dim(v.dir, 2) ~= 0
@@ -757,8 +798,11 @@ while not rl.WindowShouldClose() do
     end
     tprint("jump buf = " .. tostring(player.jump_buf))
 
-    player.platforms_standing = map(function (v) return v.entity_id end,
-                                    filter(function (v) return v.entity_id end, collisions))
+    for _, c in ipairs(collisions) do
+        if c.entity_id and entities[c.entity_id].carrying ~= nil and vec.eq(c.dir, vec.v2(0, 1)) then
+            table.insert(entities[c.entity_id].carrying, -1)
+        end
+    end
 
     camera.target = player.pos
 
