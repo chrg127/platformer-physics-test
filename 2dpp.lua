@@ -128,7 +128,7 @@ rl.InitWindow(
     SCREEN_HEIGHT * TILE_SIZE * SCALE,
     "2d platformer physics"
 )
-rl.SetTargetFPS(60)
+rl.SetTargetFPS(30)
 
 local buffer = rl.LoadRenderTexture(SCREEN_WIDTH * TILE_SIZE, SCREEN_HEIGHT * TILE_SIZE)
 
@@ -291,6 +291,14 @@ function generate_collision_hitboxes(hb, offs)
     }
 end
 
+function get_hitboxes(hitbox, from)
+    return map(function (axis)
+        return map(function (dir)
+            return map(function (p) return hitbox[1] + p end, dir)
+        end, axis)
+    end, from)
+end
+
 local PLAYER_COLLISION_HITBOXES = generate_collision_hitboxes(PLAYER_HITBOX, { TILE_TOLLERANCE, 4 })
 
 -- physics constant for the player, change these to control the "feel" of the game
@@ -299,18 +307,17 @@ local ACCEL = 700
 local DECEL = 300
 
 -- the cap is in tiles, but you'd probably want to know how many pixels
--- you're traveling each frame. the formula is dependent on FPS, so set a
--- maximum target FPS, then use p = cap * (1/fps). if you'd like to know the cap
--- from a set pixels, reverse the formula: cap = p/(1/fps)
--- this is especially important for the y cap: the result of the above formula
--- should stay lower than the dead zone on the x axis.
--- the tile tollerance plays a factor on this too. put your cap too high, and
--- you might notice the player getting inside tiles at high speed.
+-- you're traveling each frame. the formulas are:
+--
+--  p = cap / fps, cap = p * fps
+--
+-- where is the pixels traveled each frame and fps is a target fps (i.e.
+-- the minimum fps the game can have).
+-- in practice, only caps with a p >= 16 get really problematic (as that's where
+-- you start skipping tiles)
 
--- i've found x velocity can be really large. only when p >= 16 it starts being
--- problematic. might be more problematic for slopes.
-local VEL_X_CAP = 40 * TILE_SIZE -- i've found this one can be really large.
-local VEL_Y_CAP = 22 * TILE_SIZE -- just under 6 pixels at 60 FPS
+local VEL_X_CAP = 10*30
+local VEL_Y_CAP = 15*30
 local GRAVITY = 400
 -- used when pressing the jump button while falling
 local SLOW_GRAVITY = 300
@@ -328,18 +335,19 @@ local SLOPE_DOWN_SPEED_START = 100
 
 local JUMP_VEL_MIN = -math.sqrt(2 * GRAVITY * JUMP_HEIGHT_MIN * TILE_SIZE)
 
-local ENTITY_MOVING_PLATFORM = 1
-local ENTITY_BOULDER = 2
-
+local ENTITY = {
+    MOVING_PLATFORM = 1,
+    BOULDER = 2,
+}
 -- store here entities such as moving platforms and boulders
 local entity_info = {
-    [ENTITY_MOVING_PLATFORM] = {
+    [ENTITY.MOVING_PLATFORM] = {
         -- normals = { vec.v2(0, -1) },
         normals = { vec.v2(0, -1), vec.v2(0, 1), vec.v2(1, 0), vec.v2(-1, 0) },
         size = vec.v2(3, 1) * TILE_SIZE,
         path_length = vec.v2(10, 0) * TILE_SIZE,
     },
-    [ENTITY_BOULDER] = {
+    [ENTITY.BOULDER] = {
         size = vec.v2(2, 2) * TILE_SIZE,
         normals = { vec.v2(0, -1), vec.v2(0, 1), vec.v2(1, 0), vec.v2(-1, 0) },
         collision_hitboxes = generate_collision_hitboxes({ vec.zero, vec.v2(2, 2) * TILE_SIZE }, { 5, 0 })
@@ -348,7 +356,7 @@ local entity_info = {
 
 function moving_platform(pos, dir)
     return {
-        type = ENTITY_MOVING_PLATFORM,
+        type = ENTITY.MOVING_PLATFORM,
         start_pos = t2p(pos),
         pos = t2p(pos),
         old_pos = t2p(pos),
@@ -359,7 +367,7 @@ end
 
 function boulder(pos)
     return {
-        type = ENTITY_BOULDER,
+        type = ENTITY.BOULDER,
         old_pos = t2p(pos),
         pos = t2p(pos),
         vel = vec.v2(0, 0),
@@ -370,7 +378,8 @@ end
 local entities = {
     moving_platform(vec.v2(-3, 7), vec.v2(6, 0)),
     boulder(vec.v2(1, 0)),
-    -- boulder(vec.v2(4, 6)),
+    boulder(vec.v2(4, 7)),
+    -- moving_platform(vec.v2(10, 7), vec.v2(-6, 0)),
 }
 
 local gravity_dir = 1
@@ -410,7 +419,7 @@ while not rl.WindowShouldClose() do
     -- first step entities that can carry stuff, but can't be carried
     for id, entity in ipairs(entities) do
         local info = entity_info[entity.type]
-        if entity.type == ENTITY_MOVING_PLATFORM then
+        if entity.type == ENTITY.MOVING_PLATFORM then
             entity.old_pos = entity.pos
             entity.pos = entity.pos + entity.dir * dt
             -- handle carried entities
@@ -430,7 +439,7 @@ while not rl.WindowShouldClose() do
     -- handle everything else, including the player
     for id, entity in ipairs(entities) do
         local info = entity_info[entity.type]
-        if entity.type == ENTITY_BOULDER then
+        if entity.type == ENTITY.BOULDER then
             entity.vel = entity.vel + vec.v2(0, GRAVITY) * dt
             entity.old_pos = entity.pos
             entity.pos = entity.pos + entity.vel * dt
@@ -506,14 +515,6 @@ while not rl.WindowShouldClose() do
         return res
     end
 
-    function get_hitboxes(hitbox, from)
-        return map(function (axis)
-            return map(function (dir)
-                return map(function (p) return hitbox[1] + p end, dir)
-            end, axis)
-        end, from)
-    end
-
     -- compute collision point of box a against box b, with b's normals
     function box_collision(a, old_a, b, old_b, axis, side_a, normals)
         local normal = vec.set_dim(vec.zero, axis+1, side_a == 0 and 1 or -1)
@@ -530,7 +531,7 @@ while not rl.WindowShouldClose() do
         local side_b = side_a == 0 and 1 or 0
         local ap = ref(old_a[side_a+1])
         local bp = ref(    b[side_b+1])
-        local lteq   = side_a == 0 and gteq or lteq
+        local lteq = side_a == 0 and gteq or lteq
         return lteq(ap, bp + TILE_TOLLERANCE * -vec.dim(normal, axis+1))
            and bp or math.huge
     end
@@ -661,7 +662,8 @@ while not rl.WindowShouldClose() do
 
     function get_entities(pos, size, entity_id)
         local r = rec(pos, size)
-        -- dumb loop over every entity. this is where one could use something smarter, e.g. quadtrees
+        -- dumb loop over every entity. this is where one could use
+        -- something smarter, e.g. quadtrees
         return filter(function (e)
             local info = entity_info[e.entity.type]
             return entity_id ~= e.id
@@ -677,16 +679,11 @@ while not rl.WindowShouldClose() do
                 local old_hitbox = map(function (v) return v + old_pos end, hitbox_unit)
                 local hitbox = map(function (v) return v + pos end, hitbox_unit)
                 local boxes = get_hitboxes(hitbox, collision_boxes)
-
                 local points = {}
 
                 -- collision with entities
-                local r = rec(hitbox[1], size)
                 for _, e in ipairs(get_entities(hitbox[1], size, entity_id)) do
                     local info = entity_info[e.entity.type]
-                    -- yes, every entity defined uses box collisions
-                    -- if there was an entity that didn't, i'd probably try
-                    -- putting this stuff in a function
                     local p = box_collision(
                         hitbox, old_hitbox,
                         { e.entity.pos, e.entity.pos + info.size },
@@ -718,7 +715,7 @@ while not rl.WindowShouldClose() do
     -- first handle entities that collide with ground
     for id, entity in ipairs(entities) do
         local info = entity_info[entity.type]
-        if entity.type == ENTITY_BOULDER then
+        if entity.type == ENTITY.BOULDER then
             pos, collisions = player_collision(
                 entity.pos, entity.old_pos, { vec.zero, info.size },
                 info.collision_hitboxes, id
@@ -729,9 +726,10 @@ while not rl.WindowShouldClose() do
                     entity.vel = vec.set_dim(entity.vel, axis+1, 0)
                 end
             end
-            for _, e in ipairs(filter(function (v) return v.entity_id end, collisions)) do
-                if entities[e.entity_id].type == ENTITY_MOVING_PLATFORM then
-                    table.insert(entities[e.entity_id].carrying, id)
+            for _, c in ipairs(collisions) do
+                if c.entity_id and entities[c.entity_id].carrying ~= nil
+                and vec.eq(c.dir, vec.v2(0, 1)) then
+                    table.insert(entities[c.entity_id].carrying, id)
                 end
             end
         end
@@ -739,7 +737,7 @@ while not rl.WindowShouldClose() do
 
     -- then handle the player
     local pos, collisions = player_collision(
-        player.pos, old_pos, PLAYER_HITBOX, PLAYER_COLLISION_HITBOXES
+        player.pos, old_pos, PLAYER_HITBOX, PLAYER_COLLISION_HITBOXES, -1
     )
     player.pos = pos
     tprint("pos (adjusted) = " .. tostring(player.pos))
@@ -799,7 +797,8 @@ while not rl.WindowShouldClose() do
     tprint("jump buf = " .. tostring(player.jump_buf))
 
     for _, c in ipairs(collisions) do
-        if c.entity_id and entities[c.entity_id].carrying ~= nil and vec.eq(c.dir, vec.v2(0, 1)) then
+        if c.entity_id and entities[c.entity_id].carrying ~= nil
+        and vec.eq(c.dir, vec.v2(0, 1)) then
             table.insert(entities[c.entity_id].carrying, -1)
         end
     end
@@ -851,9 +850,9 @@ while not rl.WindowShouldClose() do
 
     for _, entity in ipairs(entities) do
         local info = entity_info[entity.type]
-        if entity.type == ENTITY_MOVING_PLATFORM then
+        if entity.type == ENTITY.MOVING_PLATFORM then
             rl.DrawRectangleRec(rec(entity.pos, info.size), rl.YELLOW)
-        elseif entity.type == ENTITY_BOULDER then
+        elseif entity.type == ENTITY.BOULDER then
             rl.DrawRectangleRec(rec(entity.pos, info.size), rl.GRAY)
         end
     end

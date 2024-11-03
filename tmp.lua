@@ -120,3 +120,19 @@ end
                             or x - size.x/2
                     end
 
+                -- push stuff
+                local player_hitbox     = map(function (v) return v + player.pos end, PLAYER_HITBOX)
+                local player_old_hitbox = player_hitbox
+                -- local player_old_hitbox = map(function (v) return v + old_pos end, PLAYER_HITBOX)
+                if entity_id ~= -1
+                    and entities[entity_id].type == ENTITY_BOULDER
+                and rl.CheckCollisionRecs(
+                    rec(hitbox[1], hitbox[2] - hitbox[1]),
+                    rec(player_hitbox[1], player_hitbox[2] - player_hitbox[1])
+                ) then
+                    local p = box_collision(hitbox, old_hitbox, player_hitbox, player_old_hitbox, axis, move, { vec.v2(1, 0), vec.v2(-1, 0) })
+                    if p ~= math.huge then
+                        pos = vec.set_dim(pos, axis+1, p - vec.dim(size, axis+1) * move)
+                    end
+                end
+
