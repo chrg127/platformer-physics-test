@@ -128,7 +128,7 @@ rl.InitWindow(
     SCREEN_HEIGHT * TILE_SIZE * SCALE,
     "2d platformer physics"
 )
-rl.SetTargetFPS(30)
+rl.SetTargetFPS(60)
 
 local buffer = rl.LoadRenderTexture(SCREEN_WIDTH * TILE_SIZE, SCREEN_HEIGHT * TILE_SIZE)
 
@@ -259,6 +259,17 @@ function slope_tiles(t)
     return res
 end
 
+function inside_slope(tile, box, count_line)
+    local info = info_of(tile)
+    local dir  = b2i(info.normals[1].y < 0)
+    local to   = t2p(tile - info.slope.origin)
+    local yu   = slope_diag_point(to, info, box[1].x + (box[2].x - box[1].x), vec.x, vec.y)
+    local y    = to.y + yu * TILE_SIZE
+    local fns  = count_line and { gteq, lteq } or { gt, lt }
+    local lt   = fns[dir+1]
+    return not lt(box[dir+1].y, y) and y or false
+end
+
 -- tiles have a "border" where collisions register. this constant controls how big it is
 local TILE_TOLLERANCE = 5
 local SLOPE_TOLLERANCE = 2
@@ -270,7 +281,6 @@ local player = {
     on_ground     = false,
     coyote_time   = 0,
     jump_buf      = false,
-    slope_dir     = 0,
 }
 
 local PLAYER_DRAW_SIZE = vec.v2(TILE_SIZE, TILE_SIZE * 2)
@@ -327,11 +337,9 @@ local JUMP_HEIGHT_MIN  = 0.2 -- tiles
 local COYOTE_TIME_FRAMES = 10
 -- how many pixels over the ground should a jump be registered?
 local JUMP_BUF_WINDOW = 16
--- when going on slopes downwards, y velocity is set so that the player stays
--- on the slope. angle controls the angle the velocity makes, while speed start
--- controls the initial speed when the player falls down a slope, into the air.
-local SLOPE_DOWN_ANGLE = 65
-local SLOPE_DOWN_SPEED_START = 100
+-- how many pixels over the ground should we check for slopes to stick on?
+-- (fixes a problem where going downward slopes is erratic)
+local SLOPE_ADHERENCE_WINDOW = 10
 
 local JUMP_VEL_MIN = -math.sqrt(2 * GRAVITY * JUMP_HEIGHT_MIN * TILE_SIZE)
 
@@ -376,9 +384,9 @@ function boulder(pos)
 end
 
 local entities = {
-    moving_platform(vec.v2(-3, 7), vec.v2(6, 0)),
-    boulder(vec.v2(1, 0)),
-    boulder(vec.v2(4, 7)),
+    -- moving_platform(vec.v2(-3, 7), vec.v2(6, 0)),
+    -- boulder(vec.v2(1, 0)),
+    -- boulder(vec.v2(4, 7)),
     -- moving_platform(vec.v2(10, 7), vec.v2(-6, 0)),
 }
 
@@ -464,11 +472,6 @@ while not rl.WindowShouldClose() do
         player.vel.x = 0
     end
     player.vel.y = clamp(player.vel.y, -VEL_Y_CAP, VEL_Y_CAP)
-    if player.slope_dir ~= 0 and sign(player.vel.x) == player.slope_dir then
-        -- likely would be better using vel.x * tan(some_angle), but still fine
-        -- player.vel.y = VEL_Y_CAP * gravity_dir
-        player.vel.y = math.min(math.abs(player.vel.x) * math.tan(math.rad(SLOPE_DOWN_ANGLE)), VEL_Y_CAP) * gravity_dir
-    end
 
     -- jump control
     if (rl.IsKeyPressed(rl.KEY_Z) or player.jump_buf) and (player.on_ground or player.coyote_time > 0) then
@@ -546,22 +549,11 @@ while not rl.WindowShouldClose() do
             return {}, {}
         end
 
-        function is_over_slope(tile)
-            local info  = info_of(tile)
-            local dir   = b2i(info.normals[1].y < 0)
-            local to    = t2p(tile - info.slope.origin)
-            local yu    = slope_diag_point(
-                to, info, old_hitbox[1].x + size.x/2, vec.x, vec.y)
-            local y     = to.y + yu * TILE_SIZE
-            local lteq = dir == 0 and gteq or lteq
-            return lteq(old_hitbox[dir+1].y, y)
-        end
-
         function ignore_tile(tile, slopes)
             if axis == 0 then
                 local side = move == 0 and -1 or 1
                 return is_slope_facing(tile + vec.v2(-side, 0), -side)
-                   and is_over_slope(tile + vec.v2(-side, 0))
+                   and not inside_slope(tile + vec.v2(-side, 0), old_hitbox, true)
             end
             function check(t, sgn)
                 local info = info_of(t)
@@ -753,13 +745,23 @@ while not rl.WindowShouldClose() do
     tprint("on ground = " .. tostring(player.on_ground))
     tprint("old ground = " .. tostring(old_on_ground))
 
-    -- going downwards a slope, then into the air, creates a frame where
-    -- the player is going down with lots of speed
-    -- this code tries to physically fix it by undoing earlier calculations
-    if  old_on_ground and not player.on_ground and sign(player.vel.y) == gravity_dir
-    and player.slope_dir ~= 0 and sign(player.vel.x) == player.slope_dir then
-        player.pos.y = player.pos.y - math.min(math.abs(player.vel.x) * math.tan(math.rad(SLOPE_DOWN_ANGLE)), VEL_Y_CAP) * gravity_dir * dt
-        player.vel.y = SLOPE_DOWN_SPEED_START
+    -- slope adherence
+    if old_on_ground and not player.on_ground and sign(player.vel.y) == gravity_dir then
+        local hitbox = map(function (v) return v + player.pos end, PLAYER_HITBOX)
+        local xdir = sign(hitbox[2] - hitbox[1]).x
+        local center = hitbox[1].x + (hitbox[2].x - hitbox[1].x) / 2
+        local axis = gravity_dir == 1 and 1 or 0
+        local box = { vec.v2(center, hitbox[axis+1].y),
+                      vec.v2(center, hitbox[axis+1].y + SLOPE_ADHERENCE_WINDOW * gravity_dir) }
+        local tiles = get_tiles(box, function (t) return is_slope_facing(t, xdir) and end)
+        if #tiles > 0 then
+            local y = inside_slope(tiles[1], box)
+            if y then
+                player.pos.y = y - PLAYER_HITBOX[2].y
+                player.on_ground = true
+                table.insert(collisions, { tile = tiles[1], dir = vec.v2(0, 1) })
+            end
+        end
     end
 
     local calculated_vel = player.vel -- used only for drawing
@@ -774,12 +776,6 @@ while not rl.WindowShouldClose() do
     end
 
     tprint("vel (adjusted) = " .. tostring(player.vel))
-
-    local collided_slope = findf(function (v)
-        return v.tile ~= nil and is_slope(v.tile) and vec.dim(v.dir, 2) ~= 0
-    end, collisions)
-    player.slope_dir = collided_slope and sign(info_of(collided_slope.tile).normals[1].x) or 0
-    tprint("slope_dir = " .. tostring(player.slope_dir))
 
     player.coyote_time = (old_on_ground and not player.on_ground and player.vel.y > 0) and COYOTE_TIME_FRAMES
                       or (player.on_ground) and 0
