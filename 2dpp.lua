@@ -384,10 +384,11 @@ function boulder(pos)
 end
 
 local entities = {
-    -- moving_platform(vec.v2(-3, 7), vec.v2(6, 0)),
+    moving_platform(vec.v2(-3, 7), vec.v2(6, 0)),
     -- boulder(vec.v2(1, 0)),
     -- boulder(vec.v2(4, 7)),
     -- moving_platform(vec.v2(10, 7), vec.v2(-6, 0)),
+    moving_platform(vec.v2(0, 22), vec.v2(6, 0)),
 }
 
 local gravity_dir = 1
@@ -720,7 +721,7 @@ while not rl.WindowShouldClose() do
             end
             for _, c in ipairs(collisions) do
                 if c.entity_id and entities[c.entity_id].carrying ~= nil
-                and vec.eq(c.dir, vec.v2(0, 1)) then
+                and vec.eq(c.dir, vec.v2(0, gravity_dir)) then
                     table.insert(entities[c.entity_id].carrying, id)
                 end
             end
@@ -794,7 +795,7 @@ while not rl.WindowShouldClose() do
 
     for _, c in ipairs(collisions) do
         if c.entity_id and entities[c.entity_id].carrying ~= nil
-        and vec.eq(c.dir, vec.v2(0, 1)) then
+        and vec.eq(c.dir, vec.v2(0, gravity_dir)) then
             table.insert(entities[c.entity_id].carrying, -1)
         end
     end
