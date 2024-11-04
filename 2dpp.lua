@@ -263,7 +263,7 @@ function inside_slope(tile, box, count_line)
     local info = info_of(tile)
     local dir  = b2i(info.normals[1].y < 0)
     local to   = t2p(tile - info.slope.origin)
-    local yu   = slope_diag_point(to, info, box[1].x + (box[2].x - box[1].x), vec.x, vec.y)
+    local yu   = slope_diag_point(to, info, box[1].x + (box[2].x - box[1].x)/2, vec.x, vec.y)
     local y    = to.y + yu * TILE_SIZE
     local fns  = count_line and { gteq, lteq } or { gt, lt }
     local lt   = fns[dir+1]
@@ -748,16 +748,16 @@ while not rl.WindowShouldClose() do
     -- slope adherence
     if old_on_ground and not player.on_ground and sign(player.vel.y) == gravity_dir then
         local hitbox = map(function (v) return v + player.pos end, PLAYER_HITBOX)
-        local xdir = sign(hitbox[2] - hitbox[1]).x
-        local center = hitbox[1].x + (hitbox[2].x - hitbox[1].x) / 2
-        local axis = gravity_dir == 1 and 1 or 0
-        local box = { vec.v2(center, hitbox[axis+1].y),
-                      vec.v2(center, hitbox[axis+1].y + SLOPE_ADHERENCE_WINDOW * gravity_dir) }
-        local tiles = get_tiles(box, function (t) return is_slope_facing(t, xdir) and end)
+        local xdir = sign(player.pos.x - old_pos.x)
+        local center = hitbox[1] + (hitbox[2] - hitbox[1]) / 2
+        local side = gravity_dir == 1 and 1 or 0
+        local box = { vec.v2(center.x, hitbox[side+1].y + SLOPE_ADHERENCE_WINDOW * gravity_dir * (side == 1 and 0 or 1)),
+                      vec.v2(center.x, hitbox[side+1].y + SLOPE_ADHERENCE_WINDOW * gravity_dir * side) }
+        local tiles = get_tiles(box, function (t) return is_slope_facing(t, xdir) end)
         if #tiles > 0 then
             local y = inside_slope(tiles[1], box)
             if y then
-                player.pos.y = y - PLAYER_HITBOX[2].y
+                player.pos.y = y - PLAYER_HITBOX[2].y * side
                 player.on_ground = true
                 table.insert(collisions, { tile = tiles[1], dir = vec.v2(0, 1) })
             end
@@ -863,7 +863,7 @@ while not rl.WindowShouldClose() do
         end
     end
 
-    local center = player.pos + (hitbox[2] - hitbox[1])/2
+    local center = hitbox[1] + (hitbox[2] - hitbox[1])/2
     rl.DrawLineV(center, center + vec.normalize(player.pos - old_pos) * 50, rl.YELLOW)
     rl.DrawLineV(center, center + vec.normalize(calculated_vel) * 50, rl.GREEN)
 
