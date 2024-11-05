@@ -33,9 +33,11 @@ function lteq(a, b) return a < b or rl.FloatEquals(a, b) == 1 end
 function gteq(a, b) return a > b or rl.FloatEquals(a, b) == 1 end
 function sign(x) return x < 0 and -1 or x > 0 and 1 or 0 end
 function b2i(exp) return exp and 1 or 0 end
+function flip(x) return bit.bxor(x, 1) end
 function clamp(x, min, max) return rl.Clamp(x, min, max) end
 function lerp(a, b, t) return rl.Lerp(a, b, t) end
 function rlerp(a, b, v) return rl.Normalize(v, a, b) end
+function aabb(p, s) return { p, p + s } end
 
 function find(t, value, comp)
     for i, v in ipairs(t) do
@@ -117,7 +119,7 @@ local TILE_SIZE = 16
 local SCREEN_WIDTH = 25
 local SCREEN_HEIGHT = 20
 -- scale window up to this number
-local SCALE = 2
+local SCALE = 1
 -- set this to true for free movement instead of being bound by gravity
 local FREE_MOVEMENT = false
 local FREE_MOVEMENT_SPEED = 2
@@ -462,7 +464,7 @@ while not rl.WindowShouldClose() do
     local decel_hor = player.vel.x > 0 and -DECEL
                    or player.vel.x < 0 and  DECEL
                    or 0
-    local gravity = rl.IsKeyDown(rl.KEY_Z) and not player.on_ground and player.vel.y > 0
+    local gravity = rl.IsKeyDown(rl.KEY_Z) and not player.on_ground and sign(player.vel.y) == gravity_dir
                 and SLOW_GRAVITY or GRAVITY
     gravity = gravity * gravity_dir
     local accel = vec.v2(accel_hor + decel_hor, gravity)
@@ -532,7 +534,7 @@ while not rl.WindowShouldClose() do
         then
             return math.huge
         end
-        local side_b = side_a == 0 and 1 or 0
+        local side_b = flip(side_a)
         local ap = ref(old_a[side_a+1])
         local bp = ref(    b[side_b+1])
         local lteq = side_a == 0 and gteq or lteq
@@ -540,46 +542,42 @@ while not rl.WindowShouldClose() do
            and bp or math.huge
     end
 
-    function collide_tiles(hitbox, old_hitbox, boxes, size, axis, move)
-        local direction = vec.normalize(hitbox[1] - old_hitbox[1])
-        local tiles = get_tiles(boxes[axis+1][move+1], identity)
+    function collide_tiles(hitbox, old_hitbox, boxes, size, axis, side)
+        local tiles = get_tiles(boxes[axis+1][side+1], identity)
         if axis == 0 and boxes[3] ~= nil then
-            tiles = append(tiles, get_tiles(boxes[3][move+1], is_slope))
+            tiles = append(tiles, get_tiles(boxes[3][side+1], is_slope))
         end
         if #tiles == 0 then
             return {}, {}
         end
+        local direction = vec.normalize(hitbox[1] - old_hitbox[1])
 
         function ignore_tile(tile, slopes)
             if axis == 0 then
-                local side = move == 0 and -1 or 1
-                return is_slope_facing(tile + vec.v2(-side, 0), -side)
-                   and not inside_slope(tile + vec.v2(-side, 0), old_hitbox, true)
+                local dir = side == 0 and -1 or 1
+                return is_slope_facing(tile + vec.v2(-dir, 0), -dir)
+                   and not inside_slope(tile + vec.v2(-dir, 0), old_hitbox, true)
             end
             function check(t, sgn)
                 local info = info_of(t)
                 return is_slope(t, sgn)
                    and sign(info.normals[1].x) == sgn
                    and find(slopes, t, vec.eq)
-                   and move == b2i(info.normals[1].y < 0)
+                   and side == b2i(info.normals[1].y < 0)
             end
             return check(tile + vec.v2(-1, 0), -1)
                 or check(tile + vec.v2( 1, 0),  1)
         end
 
         function get_tile_dim(tile)
-            local pos = t2p(tile)
-            local tile_hitbox = { pos, pos + vec.v2(TILE_SIZE, TILE_SIZE) }
-            return box_collision(
-                hitbox, old_hitbox, tile_hitbox, tile_hitbox,
-                axis, move, info_of(tile).normals
-            )
+            local hb = aabb(t2p(tile), vec.v2(TILE_SIZE, TILE_SIZE))
+            return box_collision(hitbox, old_hitbox, hb, hb, axis, side, info_of(tile).normals)
         end
 
         function get_slope_dim(tile)
             local info = info_of(tile)
             local dir = b2i(info.normals[1].y < 0)
-            if dir ~= move or vec.dot(direction, info.normals[1]) >= 0 then
+            if dir ~= side or vec.dot(direction, info.normals[1]) >= 0 then
                 return math.huge
             end
             local to    = t2p(tile - info.slope.origin)
@@ -588,7 +586,6 @@ while not rl.WindowShouldClose() do
             if y == math.huge then
                 return math.huge
             end
-            -- check if the player is inside the slope
             local lteq = dir == 0 and gteq or lteq
             local toll = SLOPE_TOLLERANCE * -sign(info.normals[1].y)
             if (old_y == math.huge or lteq(old_hitbox[dir+1].y, old_y + toll))
@@ -608,8 +605,8 @@ while not rl.WindowShouldClose() do
             end
             local old_slopes = slopes
             slopes = filter(function (t)
-                local neighbor = t + vec.v2(move == 0 and 1 or -1, 0)
-                return b2i(info_of(t).normals[1].x < 0) == move
+                local neighbor = t + vec.v2(side == 0 and 1 or -1, 0)
+                return b2i(info_of(t).normals[1].x < 0) == side
                    and not (is_slope(neighbor) and same_slope(t, neighbor))
             end, old_slopes)
             local origs = map(function (s)
@@ -621,8 +618,8 @@ while not rl.WindowShouldClose() do
             local old_center = old_hitbox[1].x + size.x/2
             local center     =     hitbox[1].x + size.x/2
             local tp = t2p(slopes[1]).x
-            local p = tp + (move == 0 and TILE_SIZE or 0)
-            local lteq = move == 0 and gteq or lteq
+            local p = tp + (side == 0 and TILE_SIZE or 0)
+            local lteq = side == 0 and gteq or lteq
             local toll = SLOPE_TOLLERANCE * -sign(info_of(slopes[1]).normals[1].x)
             if lteq(old_center, p+toll) and not lteq(center, p) then
                 return tp + size.x/2
@@ -643,7 +640,7 @@ while not rl.WindowShouldClose() do
         if #points == 0 then
             return {}, {}
         end
-        local dir = vec.set_dim(vec.zero, axis+1, move == 0 and -1 or 1)
+        local dir = vec.set_dim(vec.zero, axis+1, side == 0 and -1 or 1)
         local result = {}
         for _, ts in ipairs({tiles, slopes}) do
             for _, t in ipairs(ts) do
@@ -668,9 +665,9 @@ while not rl.WindowShouldClose() do
         local size = hitbox_unit[2] - hitbox_unit[1]
         local result = {}
         for axis = 0, 1 do
-            for move = 0, 1 do
+            for side = 0, 1 do
                 local old_hitbox = map(function (v) return v + old_pos end, hitbox_unit)
-                local hitbox = map(function (v) return v + pos end, hitbox_unit)
+                local     hitbox = map(function (v) return v +     pos end, hitbox_unit)
                 local boxes = get_hitboxes(hitbox, collision_boxes)
                 local points = {}
 
@@ -681,24 +678,24 @@ while not rl.WindowShouldClose() do
                         hitbox, old_hitbox,
                         { e.entity.pos, e.entity.pos + info.size },
                         { e.entity.old_pos, e.entity.old_pos + info.size },
-                         axis, move, info.normals
+                         axis, side, info.normals
                     )
                     if p ~= math.huge then
-                        local dir = vec.set_dim(vec.zero, axis+1, move == 0 and -1 or 1)
+                        local dir = vec.set_dim(vec.zero, axis+1, side == 0 and -1 or 1)
                         table.insert(points, p)
                         table.insert(result, { entity_id = e.id, dir = dir })
                     end
                 end
 
                 -- collision with tiles
-                local ps, res = collide_tiles(hitbox, old_hitbox, boxes, size, axis, move)
+                local ps, res = collide_tiles(hitbox, old_hitbox, boxes, size, axis, side)
                 points = append(points, ps)
                 result = append(result, res)
 
                 if #points > 0 then
-                    local minf = move == 0 and maxf or minf
+                    local minf = side == 0 and maxf or minf
                     local p = minf(identity, points)
-                    pos = vec.set_dim(pos, axis+1, p - vec.dim(size, axis+1) * move)
+                    pos = vec.set_dim(pos, axis+1, p - vec.dim(size, axis+1) * side)
                 end
             end
         end
@@ -733,7 +730,6 @@ while not rl.WindowShouldClose() do
         player.pos, old_pos, PLAYER_HITBOX, PLAYER_COLLISION_HITBOXES, -1
     )
     player.pos = pos
-    tprint("pos (adjusted) = " .. tostring(player.pos))
 
     tprint(fmt.tostring("collisions = ", collisions))
 
@@ -752,8 +748,8 @@ while not rl.WindowShouldClose() do
         local xdir = sign(player.pos.x - old_pos.x)
         local center = hitbox[1] + (hitbox[2] - hitbox[1]) / 2
         local side = gravity_dir == 1 and 1 or 0
-        local box = { vec.v2(center.x, hitbox[side+1].y + SLOPE_ADHERENCE_WINDOW * gravity_dir * (side == 1 and 0 or 1)),
-                      vec.v2(center.x, hitbox[side+1].y + SLOPE_ADHERENCE_WINDOW * gravity_dir * side) }
+        local box = { vec.v2(center.x, hitbox[side+1].y + SLOPE_ADHERENCE_WINDOW * gravity_dir * flip(side)),
+                      vec.v2(center.x, hitbox[side+1].y + SLOPE_ADHERENCE_WINDOW * gravity_dir * side      ) }
         local tiles = get_tiles(box, function (t) return is_slope_facing(t, xdir) end)
         if #tiles > 0 then
             local y = inside_slope(tiles[1], box)
@@ -765,12 +761,13 @@ while not rl.WindowShouldClose() do
         end
     end
 
+    tprint("pos (adjusted) = " .. tostring(player.pos))
+
     local calculated_vel = player.vel -- used only for drawing
-    local direction = player.vel
     for _, axis in ipairs{ 0, 1 } do
         if findf(function (v)
             local d = vec.dim(v.dir, axis+1)
-            return d ~= 0 and sign(d) == sign(vec.dim(direction, axis+1))
+            return d ~= 0 and sign(d) == sign(vec.dim(player.vel, axis+1))
         end, collisions) then
             player.vel = vec.set_dim(player.vel, axis+1, 0)
         end
@@ -778,12 +775,13 @@ while not rl.WindowShouldClose() do
 
     tprint("vel (adjusted) = " .. tostring(player.vel))
 
-    player.coyote_time = (old_on_ground and not player.on_ground and player.vel.y > 0) and COYOTE_TIME_FRAMES
-                      or (player.on_ground) and 0
-                      or math.max(0, player.coyote_time - 1)
+    player.coyote_time =
+        (old_on_ground and not player.on_ground and sign(player.vel.y) == gravity_dir) and COYOTE_TIME_FRAMES
+        or player.on_ground and 0
+        or math.max(0, player.coyote_time - 1)
     tprint("coyote = " .. tostring(player.coyote_time))
 
-    if rl.IsKeyPressed(rl.KEY_Z) and not player.on_ground and player.vel.y > 0 then
+    if rl.IsKeyPressed(rl.KEY_Z) and not player.on_ground and sign(player.vel.y) == gravity_dir then
         local hitbox = map(function (v) return v + player.pos end, PLAYER_HITBOX)
         local hitboxes = get_hitboxes(hitbox, PLAYER_COLLISION_HITBOXES)
         local h = map(function (v) return v + vec.v2(0, JUMP_BUF_WINDOW) end, hitboxes[2][2])
