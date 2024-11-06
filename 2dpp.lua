@@ -314,11 +314,13 @@ local entity_info = {
     },
     [ENTITY.MOVING_PLATFORM] = {
         normals     = { vec.v2(0, -1), vec.v2(0, 1), vec.v2(1, 0), vec.v2(-1, 0) },
-        size        = vec.v2(3, 1) * TILE_SIZE,
+        draw_size   = vec.v2(3, 1) * TILE_SIZE,
+        hitbox      = { vec.zero, vec.v2(3, 1) * TILE_SIZE },
         path_length = vec.v2(10, 0) * TILE_SIZE,
     },
     [ENTITY.BOULDER] = {
-        hitbox               = { vec.zero, vec.v2(2, 2) * TILE_SIZE },
+        hitbox             = { vec.zero, vec.v2(2, 2) * TILE_SIZE },
+        draw_size          = vec.v2(2, 2) * TILE_SIZE,
         normals            = { vec.v2(0, -1), vec.v2(0, 1), vec.v2(1, 0), vec.v2(-1, 0) },
         collision_hitboxes = generate_collision_hitboxes({ vec.zero, vec.v2(2, 2) * TILE_SIZE }, { 5, 0 })
     },
@@ -326,14 +328,14 @@ local entity_info = {
 
 function player(pos)
     return {
-        type          = ENTITY.PLAYER,
-        pos           = pos,
-        old_pos       = pos,
-        vel           = vec.zero,
-        on_ground     = false,
-        coyote_time   = 0,
-        jump_buf      = false,
-        collisions    = {},
+        type           = ENTITY.PLAYER,
+        pos            = pos,
+        old_pos        = pos,
+        vel            = vec.zero,
+        on_ground      = false,
+        coyote_time    = 0,
+        jump_buf       = false,
+        old_collisions = {},
     }
 end
 
@@ -350,12 +352,13 @@ end
 
 function boulder(pos)
     return {
-        type      = ENTITY.BOULDER,
-        old_pos   = t2p(pos),
-        pos       = t2p(pos),
-        vel       = vec.v2(0, 0),
-        on_ground = false,
-        carrying  = {},
+        type           = ENTITY.BOULDER,
+        old_pos        = t2p(pos),
+        pos            = t2p(pos),
+        vel            = vec.v2(0, 0),
+        on_ground      = false,
+        old_collisions = {},
+        carrying       = {},
     }
 end
 
@@ -364,7 +367,7 @@ local entities = {
     player(vec.v2(SCREEN_WIDTH, SCREEN_HEIGHT) * TILE_SIZE / 2
          + vec.v2(TILE_SIZE/2 - 8 * TILE_SIZE, -8 * TILE_SIZE)),
     moving_platform(vec.v2(-3, 7), vec.v2(6, 0)),
-    -- boulder(vec.v2(1, 0)),
+    boulder(vec.v2(1, 0)),
     -- boulder(vec.v2(4, 7)),
     -- moving_platform(vec.v2(10, 7), vec.v2(-6, 0)),
     moving_platform(vec.v2(0, 22), vec.v2(6, 0)),
@@ -660,11 +663,11 @@ while not rl.WindowShouldClose() do
         return filter(function (e)
             local info = entity_info[e.entity.type]
             return entity_id ~= e.id
-               and rl.CheckCollisionRecs(r, rec(e.entity.pos, info.size))
+               and rl.CheckCollisionRecs(r, rec(e.entity.pos, info.hitbox[2] - info.hitbox[1]))
         end, map(function (e, i) return { id = i, entity = e } end, entities))
     end
 
-    function player_collision(pos, old_pos, hitbox_unit, collision_boxes, entity_id)
+    function entity_collision(pos, old_pos, hitbox_unit, collision_boxes, entity_id)
         local size = hitbox_unit[2] - hitbox_unit[1]
         local result = {}
         for axis = 0, 1 do
@@ -679,7 +682,7 @@ while not rl.WindowShouldClose() do
                     local info = entity_info[e.entity.type]
                     local p = box_collision(
                         hitbox, old_hitbox,
-                        aabb(e.entity.pos, info.hitbox[2] - info.hitbox[1]),
+                        aabb(e.entity.pos,     info.hitbox[2] - info.hitbox[1]),
                         aabb(e.entity.old_pos, info.hitbox[2] - info.hitbox[1]),
                         axis, side, info.normals
                     )
@@ -711,12 +714,18 @@ while not rl.WindowShouldClose() do
     for id, entity in ipairs(entities) do
         local info = entity_info[entity.type]
         if entity.type == ENTITY.BOULDER or entity.type == ENTITY.PLAYER then
-            pos, collisions = player_collision(entity.pos, entity.old_pos, info.hitbox, info.collision_hitboxes, id)
+            local pos, collisions = entity_collision(
+                entity.pos, entity.old_pos, info.hitbox, info.collision_hitboxes, id
+            )
             entity.pos = pos
             tprint(fmt.tostring("collisions = ", collisions))
 
             -- setup ground flag so it behaves well with gravity
             local old_on_ground = entity.on_ground
+            function just_fallen()
+                return old_on_ground and not entity.on_ground and sign(entity.vel.y) == gravity_dir
+            end
+
             entity.on_ground = findf(function (v)
                 return vec.eq(v.dir, vec.v2(0, gravity_dir))
             end, collisions)
@@ -725,7 +734,7 @@ while not rl.WindowShouldClose() do
             tprint("old ground = " .. tostring(old_on_ground))
 
             -- slope adherence
-            if old_on_ground and not entity.on_ground and sign(entity.vel.y) == gravity_dir then
+            if just_fallen() and findf(function (c) return c.entity_id end, entity.collisions) then
                 function make_box(x, ya, yb)
                     return { vec.v2(x, math.min(ya, yb)), vec.v2(x, math.max(ya, yb)) }
                 end
@@ -764,17 +773,16 @@ while not rl.WindowShouldClose() do
                 end
             end
 
-            if entity.type == ENTITY.PLAYER then
-                entity.collisions = collisions
+            entity.old_collisions = collisions
 
-                entity.coyote_time =
-                    (old_on_ground and not entity.on_ground and sign(entity.vel.y) == gravity_dir) and COYOTE_TIME_FRAMES
-                    or entity.on_ground and 0
-                    or math.max(0, entity.coyote_time - 1)
+            if entity.type == ENTITY.PLAYER then
+                entity.coyote_time = just_fallen() and COYOTE_TIME_FRAMES
+                                or entity.on_ground and 0
+                                or math.max(0, entity.coyote_time - 1)
                 tprint("coyote = " .. tostring(entity.coyote_time))
 
                 if rl.IsKeyPressed(rl.KEY_Z) and not entity.on_ground and sign(entity.vel.y) == gravity_dir then
-                    local hitbox = map(function (v) return v + entity.pos end, PLAYER_HITBOX)
+                    local hitbox = map(function (v) return v + entity.pos end, info.hitbox)
                     local hitboxes = get_hitboxes(hitbox, info.collision_hitboxes)
                     local side = gravity_dir == 1 and 1 or 0
                     local h = map(function (v)
@@ -815,7 +823,7 @@ while not rl.WindowShouldClose() do
                 if info.slope == nil then
                     local color = findf(function (v)
                         return v.tile ~= nil and vec.eq(v.tile, tile)
-                    end, entities[1].collisions) and rl.RED or rl.WHITE
+                    end, entities[1].old_collisions) and rl.RED or rl.WHITE
                     for _, n in ipairs(info.normals) do
                         local ps = n2ps(n)
                         rl.DrawLineV(orig + ps[1] * TILE_SIZE, orig + ps[2] * TILE_SIZE, color)
@@ -826,7 +834,7 @@ while not rl.WindowShouldClose() do
                         return v.tile ~= nil and findf(function (s)
                             return vec.eq(v.tile, s)
                         end, tiles)
-                    end, entities[1].collisions) and rl.RED or rl.WHITE
+                    end, entities[1].old_collisions) and rl.RED or rl.WHITE
                     local points = map(function (p) return orig + p * TILE_SIZE end, info.slope.points)
                     rl.DrawTriangle(points[1], points[2], points[3], color)
                 end
@@ -837,7 +845,7 @@ while not rl.WindowShouldClose() do
     for _, entity in ipairs(entities) do
         local info = entity_info[entity.type]
         if entity.type == ENTITY.MOVING_PLATFORM then
-            rl.DrawRectangleRec(rec(entity.pos, info.hitbox[2]), rl.YELLOW)
+            rl.DrawRectangleRec(rec(entity.pos, info.draw_size), rl.YELLOW)
         elseif entity.type == ENTITY.BOULDER then
             rl.DrawRectangleRec(rec(entity.pos, info.hitbox[2]), rl.GRAY)
         elseif entity.type == ENTITY.PLAYER then
