@@ -279,8 +279,8 @@ local SLOPE_TOLLERANCE = 2
 function generate_collision_hitboxes(hb, offs)
     return {
         {
-            { vec.v2(hb[1].x  , hb[1].y + offs[1]), vec.v2(hb[1].x+1, hb[2].y - offs[1]) }, -- left
-            { vec.v2(hb[2].x-1, hb[1].y + offs[1]), vec.v2(hb[2].x  , hb[2].y - offs[1]) }, -- right
+            { vec.v2(hb[1].x  , hb[1].y + offs[1]), vec.v2(hb[1].x+5, hb[2].y - offs[1]) }, -- left
+            { vec.v2(hb[2].x-5, hb[1].y + offs[1]), vec.v2(hb[2].x  , hb[2].y - offs[1]) }, -- right
         }, {
             { vec.v2(hb[1].x + offs[2], hb[1].y   ), vec.v2(hb[2].x - offs[2], hb[1].y+10) }, -- up
             { vec.v2(hb[1].x + offs[2], hb[2].y-10), vec.v2(hb[2].x - offs[2], hb[2].y   ) }, -- down
@@ -612,12 +612,12 @@ while not rl.WindowShouldClose() do
             if #slopes < 2 then
                 return math.huge
             end
-            local old_slopes = slopes
+            -- for walk-through slopes on x axis
             slopes = filter(function (t)
                 local neighbor = t + vec.v2(side == 0 and 1 or -1, 0)
                 return b2i(info_of(t).normals[1].x < 0) == side
                    and not (is_slope(neighbor) and same_slope(t, neighbor))
-            end, old_slopes)
+            end, slopes)
             local origs = map(function (s)
                 return s - info_of(s).slope.origin
             end, slopes)
@@ -627,13 +627,12 @@ while not rl.WindowShouldClose() do
             local old_center = old_hitbox[1].x + size.x/2
             local center     =     hitbox[1].x + size.x/2
             local tp = t2p(slopes[1]).x
-            local p = tp + (side == 0 and TILE_SIZE or 0)
+            local p = tp + flip(side) * TILE_SIZE
             local lteq = side == 0 and gteq or lteq
             local toll = SLOPE_TOLLERANCE * -sign(info_of(slopes[1]).normals[1].x)
-            if lteq(old_center, p+toll) and not lteq(center, p) then
-                return tp + size.x/2
-            end
-            return math.huge
+            return lteq(old_center, p+toll) and not lteq(center, p)
+               and tp + size.x/2
+               or  math.huge
         end
 
         local all_slopes, all_tiles = partition(is_slope, tiles)
