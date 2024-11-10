@@ -94,11 +94,11 @@ function append(...)
 end
 
 function minf(f, t)
-    return foldl(function (k, v, r) return math.min(f(v), r) and v or r end,  math.huge, t)
+    return foldl(function (k, v, r) return math.min(f(v), r) and f(v) or r end,  math.huge, t)
 end
 
 function maxf(f, t)
-    return foldl(function (k, v, r) return math.max(f(v), r) and v or r end, -math.huge, t)
+    return foldl(function (k, v, r) return math.max(f(v), r) and f(v) or r end, -math.huge, t)
 end
 
 function partition(pred, t)
@@ -533,6 +533,15 @@ while not rl.WindowShouldClose() do
         return res
     end
 
+    function mkcoll(point, axis, side, tile, entity_id)
+        return {
+            point = point,
+            dir = vec.set_dim(vec.zero, axis+1, side == 0 and -1 or 1),
+            tile = tile,
+            entity_id = entity_id
+        }
+    end
+
     -- compute collision point of box a against box b, with b's normals
     function box_collision(a, old_a, b, old_b, axis, side_a, normals)
         local v = side_a == 0 and 1 or -1
@@ -543,13 +552,13 @@ while not rl.WindowShouldClose() do
         if not find(normals, normal, vec.eq)
         or vec.dot(a_dir, normal) >= 0 and ref(a_dir) ~= 0
            and math.abs(ref(a_dir)) >= math.abs(ref(b_dir)) then
-            return math.huge
+            return nil
         end
         local side_b = flip(side_a)
         local ap = ref(old_a[side_a+1])
         local bp = ref(    b[side_b+1])
         local lteq = side_a == 0 and gteq or lteq
-        return lteq(ap, bp + TILE_TOLLERANCE * -v) and bp or math.huge
+        return lteq(ap, bp + TILE_TOLLERANCE * -v) and bp or nil
     end
 
     function collide_tiles(hitbox, old_hitbox, boxes, axis, side)
@@ -558,7 +567,7 @@ while not rl.WindowShouldClose() do
             tiles = append(tiles, get_tiles(boxes[3][side+1], is_slope))
         end
         if #tiles == 0 then
-            return {}, {}
+            return {}
         end
         local size = hitbox[2] - hitbox[1]
         local dir = vec.set_dim(vec.zero, axis+1, side == 0 and -1 or 1)
@@ -582,37 +591,38 @@ while not rl.WindowShouldClose() do
 
         function get_tile_dim(tile)
             local hb = aabb(t2p(tile), vec.v2(TILE_SIZE, TILE_SIZE))
-            return box_collision(hitbox, old_hitbox, hb, hb, axis, side, info_of(tile).normals)
+            local p  = box_collision(hitbox, old_hitbox, hb, hb, axis, side, info_of(tile).normals)
+            return p ~= nil and mkcoll(p, axis, side, tile) or nil
         end
 
         function get_slope_dim(tile)
             local info = info_of(tile)
             local dir = b2i(info.normals[1].y < 0)
             if dir ~= side or vec.dot(hitbox[1] - old_hitbox[1], info.normals[1]) >= 0 then
-                return math.huge
+                return {}
             end
             local to    = t2p(tile - info.slope.origin)
             local y     = slope_diag_point_y(to, info,     hitbox[1].x + size.x/2)
             local old_y = slope_diag_point_y(to, info, old_hitbox[1].x + size.x/2)
             if y == math.huge then
-                return math.huge
+                return {}
             end
             local lteq = dir == 0 and gteq or lteq
             local toll = SLOPE_TOLLERANCE * -sign(info.normals[1].y)
             if (old_y == math.huge or lteq(old_hitbox[dir+1].y, old_y + toll))
             and not lteq(hitbox[dir+1].y, y) then
-                return y
+                return { mkcoll(y, axis, side, tile) }
             end
-            return math.huge
+            return {}
         end
 
         function get_slope_y(slopes)
-            return #slopes > 0 and get_slope_dim(slopes[1]) or math.huge
+            return #slopes > 0 and get_slope_dim(slopes[1]) or {}
         end
 
         function get_slope_x(slopes)
             if #slopes < 2 then
-                return math.huge
+                return {}
             end
             -- for walk-through slopes on x axis
             slopes = filter(function (t)
@@ -624,7 +634,7 @@ while not rl.WindowShouldClose() do
                 return s - info_of(s).slope.origin
             end, slopes)
             if #origs < 2 or all_eq(origs) then
-                return math.huge
+                return {}
             end
             local old_center = old_hitbox[1].x + size.x/2
             local center     =     hitbox[1].x + size.x/2
@@ -633,8 +643,8 @@ while not rl.WindowShouldClose() do
             local lteq = side == 0 and gteq or lteq
             local toll = SLOPE_TOLLERANCE * -sign(info_of(slopes[1]).normals[1].x)
             return lteq(old_center, p+toll) and not lteq(center, p)
-               and tp + size.x/2
-               or  math.huge
+               and map(function (s) return mkcoll(tp + size.x/2, axis, side, s) end, slopes)
+               or  {}
         end
 
         local all_slopes, all_tiles = partition(is_slope, tiles)
@@ -645,18 +655,8 @@ while not rl.WindowShouldClose() do
             return not ignore_tile(t, slopes) end,
         all_tiles)
         local points = map(get_tile_dim, tiles)
-        table.insert(points, axis == 0 and get_slope_x(slopes) or get_slope_y(slopes))
-        points = filter(function (v) return v ~= math.huge end, points)
-        if #points == 0 then
-            return {}, {}
-        end
-        local result = {}
-        for _, ts in ipairs({tiles, slopes}) do
-            for _, t in ipairs(ts) do
-                table.insert(result, { tile = t, dir = dir, blocking = true })
-            end
-        end
-        return points, result
+        points = append(points, axis == 0 and get_slope_x(slopes) or get_slope_y(slopes))
+        return filter(function (v) return v ~= nil end, points)
     end
 
     function get_entities(entity_id, box)
@@ -692,7 +692,8 @@ while not rl.WindowShouldClose() do
 
     function entity_collision(pos, old_pos, hitbox_unit, collision_boxes, entity_id)
         local size = hitbox_unit[2] - hitbox_unit[1]
-        local result = {}
+        local collisions = {}
+        local weak_collisions = {}
         for axis = 0, 1 do
             for side = 0, 1 do
                 local old_hitbox = map(function (v) return v + old_pos end, hitbox_unit)
@@ -710,30 +711,30 @@ while not rl.WindowShouldClose() do
                             aabb(e.entity.old_pos, info.hitbox[2] - info.hitbox[1]),
                             axis, side, info.normals
                         )
-                        if p ~= math.huge then
+                        if p ~= nil then
                             local dir = vec.set_dim(vec.zero, axis+1, side == 0 and -1 or 1)
-                            table.insert(points, p)
-                            table.insert(result, { entity_id = e.id, dir = dir, blocking = true })
+                            table.insert(points, mkcoll(p, axis, side, nil, e.id))
                         end
                     else
                         local dir = vec.set_dim(vec.zero, axis+1, side == 0 and -1 or 1)
-                        table.insert(result, { entity_id = e.id, dir = dir, blocking = false })
+                        table.insert(weak_collisions, { entity_id = e.id, dir = dir })
                     end
                 end
 
                 -- collision with tiles
-                local ps, res = collide_tiles(hitbox, old_hitbox, boxes, axis, side)
+                local ps = collide_tiles(hitbox, old_hitbox, boxes, axis, side)
                 points = append(points, ps)
-                result = append(result, res)
 
                 if #points > 0 then
                     local minf = side == 0 and maxf or minf
-                    local p = minf(identity, points)
-                    pos = vec.set_dim(pos, axis+1, p - vec.dim(size, axis+1) * side)
+                    local min_point = minf(function (p) return p.point end, points)
+                    local ps = filter(function (p) return p.point == min_point end, points)
+                    pos = vec.set_dim(pos, axis+1, ps[1].point - vec.dim(size, axis+1) * side)
+                    collisions = append(collisions, ps)
                 end
             end
         end
-        return pos, result
+        return pos, collisions, weak_collisions
     end
 
     local calculated_vel = entities[1].vel -- used only for drawing
@@ -748,7 +749,7 @@ while not rl.WindowShouldClose() do
                 end
             end
 
-            local pos, collisions = entity_collision(
+            local pos, collisions, weak_collisions = entity_collision(
                 entity.pos, entity.old_pos, info.hitbox, info.collision_hitboxes, id
             )
             entity.pos = pos
@@ -761,9 +762,8 @@ while not rl.WindowShouldClose() do
             end
 
             entity.on_ground = findf(function (v)
-                return v.blocking and vec.eq(v.dir, vec.v2(0, entity.gravity_dir))
-            end, collisions)
-                and true or false
+                return vec.eq(v.dir, vec.v2(0, entity.gravity_dir))
+            end, collisions) and true or false
             pprint("on ground = " .. tostring(entity.on_ground))
             pprint("old ground = " .. tostring(old_on_ground))
 
@@ -783,21 +783,20 @@ while not rl.WindowShouldClose() do
                     if y then
                         entity.pos.y = y - info.hitbox[2].y * side
                         entity.on_ground = true
-                        table.insert(collisions, { tile = tiles[1], dir = vec.v2(0, 1), blocking = true })
+                        table.insert(collisions, mkcoll(entity.pos.y, 1, entity.gravity_dir, tiles[1]))
                     end
                 end
             end
             pprint("pos (adjusted) = " .. tostring(entity.pos))
 
             for _, axis in ipairs{ 0, 1 } do
-                local colls = filter(function (v)
+                if findf(function (v)
                     local d = vec.dim(v.dir, axis+1)
                     -- make sure the entity isn't blocked when pushed from behind
                     return d ~= 0 and sign(d) == sign(vec.dim(entity.vel, axis+1))
-                end, collisions)
-                if findf(function (c) return c.blocking end, colls) then
+                end, collisions) then
                     entity.vel = vec.set_dim(entity.vel, axis+1, 0)
-                elseif #colls > 0 then
+                elseif #weak_collisions > 0 then
                     local value = clamp(vec.dim(entity.vel, axis+1), -VEL_BOULDER_CAP, VEL_BOULDER_CAP)
                     entity.vel = vec.set_dim(entity.vel, axis+1, value)
                 end
@@ -805,7 +804,7 @@ while not rl.WindowShouldClose() do
             pprint("vel (adjusted) = " .. tostring(entity.vel))
 
             for _, c in ipairs(collisions) do
-                if c.blocking and c.entity_id and entities[c.entity_id].carrying ~= nil
+                if c.entity_id and entities[c.entity_id].carrying ~= nil
                 and vec.eq(c.dir, vec.v2(0, entity.gravity_dir)) then
                     table.insert(entities[c.entity_id].carrying, id)
                 end
