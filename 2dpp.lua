@@ -188,9 +188,9 @@ local tilemap = {
     {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 24,  0,  0,  0,  0,  0,  0,  0 },
     {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 24,  0,  0,  0,  0,  0,  0,  0 },
     {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 24,  0,  0,  0,  0,  0,  0,  0 },
-    {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 24,  0,  0,  0,  0,  0,  0,  0 },
-    {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 24,  0,  0,  0,  0,  0,  0,  0 },
-    {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 24,  0,  0,  0,  0,  0,  0,  0 },
+    {  0,  0,  0,  0,  0,  0,  0, 25,  0,  0,  0,  0,  0,  0,  0,  0,  0, 24,  0,  0,  0,  0,  0,  0,  0 },
+    {  0,  0,  0,  0,  0,  0,  0, 25,  0,  0,  0,  0,  0,  0,  0,  0,  0, 24,  0,  0,  0,  0,  0,  0,  0 },
+    {  0,  0,  0,  0,  0,  0,  0, 25,  0,  0,  0,  0,  0,  0,  0,  0,  0, 24,  0,  0,  0,  0,  0,  0,  0 },
     {  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  0,  3,  0,  0, 15, 16 },
     {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  0,  0,  6,  0,  0, 17, 18,  0,  0,  0,  0,  4,  0,  0 },
     {  0,  0,  0,  0,  0,  1,  0,  1,  3,  0,  0,  0,  6,  0,  0,  0,  1,  2,  0,  0,  0,  4,  0,  0,  0 },
@@ -311,7 +311,7 @@ local entity_info = {
         draw_size          = vec.v2(TILE_SIZE, TILE_SIZE * 2),
         hitbox             = { vec.zero, vec.v2(TILE_SIZE, TILE_SIZE*2) },
         collision_hitboxes = generate_collision_hitboxes({ vec.zero, vec.v2(TILE_SIZE, TILE_SIZE*2) }, { TILE_TOLLERANCE, 4 }),
-        normals            = {},
+        normals            = { vec.v2(-1, 0), vec.v2(1, 0) },
     },
     [ENTITY.MOVING_PLATFORM] = {
         normals     = { vec.v2(0, -1), vec.v2(0, 1), vec.v2(1, 0), vec.v2(-1, 0) },
@@ -369,10 +369,10 @@ end
 local entities = {
     player(vec.v2(SCREEN_WIDTH, SCREEN_HEIGHT) * TILE_SIZE / 2
          + vec.v2(TILE_SIZE/2 - 8 * TILE_SIZE, -8 * TILE_SIZE)),
-    moving_platform(vec.v2(-3, 7), vec.v2(6, 0)),
-    -- boulder(vec.v2(1, 0)),
-    boulder(vec.v2(4, 7)),
-    boulder(vec.v2(6, 7)),
+    -- moving_platform(vec.v2(-3, 7), vec.v2(6, 0)),
+    boulder(vec.v2(1, 7)),
+    -- boulder(vec.v2(4, 7)),
+    -- boulder(vec.v2(6, 7)),
     -- moving_platform(vec.v2(10, 7), vec.v2(-6, 0)),
     -- moving_platform(vec.v2(0, 22), vec.v2(6, 0)),
 }
@@ -407,6 +407,8 @@ local JUMP_BUF_WINDOW = 16
 -- how many pixels over the ground should we check for slopes to stick on?
 -- (fixes a problem where going downward slopes is erratic)
 local SLOPE_ADHERENCE_WINDOW = 10
+-- when pushing boulders, cap velocity to this value
+local VEL_BOULDER_CAP = 30
 
 local logfile = io.open("log.txt", "w")
 
@@ -651,14 +653,14 @@ while not rl.WindowShouldClose() do
         local result = {}
         for _, ts in ipairs({tiles, slopes}) do
             for _, t in ipairs(ts) do
-                table.insert(result, { tile = t, dir = dir })
+                table.insert(result, { tile = t, dir = dir, blocking = true })
             end
         end
         return points, result
     end
 
-    function get_entities(pos, size, entity_id)
-        local r = rec(pos, size)
+    function get_entities(entity_id, box)
+        local r = rec(box[1], box[2] - box[1])
         -- dumb loop over every entity. this is where one could use
         -- something smarter, e.g. quadtrees
         return filter(function (e)
@@ -666,6 +668,26 @@ while not rl.WindowShouldClose() do
             return entity_id ~= e.id
                and rl.CheckCollisionRecs(r, rec(e.entity.pos, info.hitbox[2] - info.hitbox[1]))
         end, map(function (e, i) return { id = i, entity = e } end, entities))
+    end
+
+    -- when colliding with other entities (except moving platforms),
+    -- if they're moving towards you, then resolve collision
+    function should_collide(id_a, id_b, axis, side, a, b)
+        if axis == 1 or b.type == ENTITY.MOVING_PLATFORM
+        or not (a.on_ground and b.on_ground)
+        then
+            return true
+        end
+        local adir = a.pos.x - a.old_pos.x
+        local bdir = b.pos.x - b.old_pos.x
+        if sign(adir) == 0 and (sign(bdir) ~= 0 or id_b > id_a) then
+            return true
+        end
+        if sign(adir) == -sign(bdir) then
+            -- if two entities are pushing against each other, the faster wins
+            return adir > bdir
+        end
+        return false
     end
 
     function entity_collision(pos, old_pos, hitbox_unit, collision_boxes, entity_id)
@@ -679,18 +701,23 @@ while not rl.WindowShouldClose() do
                 local points = {}
 
                 -- collision with entities
-                for _, e in ipairs(get_entities(hitbox[1], size, entity_id)) do
+                for _, e in ipairs(get_entities(entity_id, boxes[axis+1][side+1])) do
                     local info = entity_info[e.entity.type]
-                    local p = box_collision(
-                        hitbox, old_hitbox,
-                        aabb(e.entity.pos,     info.hitbox[2] - info.hitbox[1]),
-                        aabb(e.entity.old_pos, info.hitbox[2] - info.hitbox[1]),
-                        axis, side, info.normals
-                    )
-                    if p ~= math.huge then
+                    if should_collide(entity_id, e.id, axis, side, entities[entity_id], e.entity) then
+                        local p = box_collision(
+                            hitbox, old_hitbox,
+                            aabb(e.entity.pos,     info.hitbox[2] - info.hitbox[1]),
+                            aabb(e.entity.old_pos, info.hitbox[2] - info.hitbox[1]),
+                            axis, side, info.normals
+                        )
+                        if p ~= math.huge then
+                            local dir = vec.set_dim(vec.zero, axis+1, side == 0 and -1 or 1)
+                            table.insert(points, p)
+                            table.insert(result, { entity_id = e.id, dir = dir, blocking = true })
+                        end
+                    else
                         local dir = vec.set_dim(vec.zero, axis+1, side == 0 and -1 or 1)
-                        table.insert(points, p)
-                        table.insert(result, { entity_id = e.id, dir = dir })
+                        table.insert(result, { entity_id = e.id, dir = dir, blocking = false })
                     end
                 end
 
@@ -734,7 +761,7 @@ while not rl.WindowShouldClose() do
             end
 
             entity.on_ground = findf(function (v)
-                return vec.eq(v.dir, vec.v2(0, entity.gravity_dir))
+                return v.blocking and vec.eq(v.dir, vec.v2(0, entity.gravity_dir))
             end, collisions)
                 and true or false
             pprint("on ground = " .. tostring(entity.on_ground))
@@ -756,25 +783,29 @@ while not rl.WindowShouldClose() do
                     if y then
                         entity.pos.y = y - info.hitbox[2].y * side
                         entity.on_ground = true
-                        table.insert(collisions, { tile = tiles[1], dir = vec.v2(0, 1) })
+                        table.insert(collisions, { tile = tiles[1], dir = vec.v2(0, 1), blocking = true })
                     end
                 end
             end
             pprint("pos (adjusted) = " .. tostring(entity.pos))
 
             for _, axis in ipairs{ 0, 1 } do
-                if findf(function (v)
+                local colls = filter(function (v)
                     local d = vec.dim(v.dir, axis+1)
                     -- make sure the entity isn't blocked when pushed from behind
                     return d ~= 0 and sign(d) == sign(vec.dim(entity.vel, axis+1))
-                end, collisions) then
+                end, collisions)
+                if findf(function (c) return c.blocking end, colls) then
                     entity.vel = vec.set_dim(entity.vel, axis+1, 0)
+                elseif #colls > 0 then
+                    local value = clamp(vec.dim(entity.vel, axis+1), -VEL_BOULDER_CAP, VEL_BOULDER_CAP)
+                    entity.vel = vec.set_dim(entity.vel, axis+1, value)
                 end
             end
             pprint("vel (adjusted) = " .. tostring(entity.vel))
 
             for _, c in ipairs(collisions) do
-                if c.entity_id and entities[c.entity_id].carrying ~= nil
+                if c.blocking and c.entity_id and entities[c.entity_id].carrying ~= nil
                 and vec.eq(c.dir, vec.v2(0, entity.gravity_dir)) then
                     table.insert(entities[c.entity_id].carrying, id)
                 end
