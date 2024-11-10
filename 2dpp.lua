@@ -675,7 +675,7 @@ while not rl.WindowShouldClose() do
     function should_collide(id_a, id_b, axis, side, a, b)
         if axis == 1 or b.type == ENTITY.MOVING_PLATFORM
         or not (a.on_ground and b.on_ground)
-        then
+        or findf(function (c) return vec.eq(c.dir, vec.v2(side == 0 and -1 or 1, 0)) end, b.old_collisions) then
             return true
         end
         local adir = a.pos.x - a.old_pos.x
@@ -690,12 +690,27 @@ while not rl.WindowShouldClose() do
         return false
     end
 
+    function rank(collisions)
+        return #collisions == 0 and 0
+            or findf(function (c) return c.tile end, collisions) and 3
+            or findf(function (c) return c.entity_id and entities[c.entity_id].type == ENTITY.MOVING_PLATFORM end, collisions) and 2
+            or 1
+    end
+
+    function pick(a, b)
+        local ranka, rankb = rank(a), rank(b)
+        return ranka > rankb and { { points = a, side = 0 } }
+            or rankb > ranka and { { points = b, side = 1 } }
+            or { { points = a, side = 0 }, { points = b, side = 1 } }
+    end
+
     function entity_collision(pos, old_pos, hitbox_unit, collision_boxes, entity_id)
         local size = hitbox_unit[2] - hitbox_unit[1]
         local collisions = {}
         local weak_collisions = {}
         for axis = 0, 1 do
-            for side = 0, 1 do
+            function side_collision(side)
+                local weak_collisions = {}
                 local old_hitbox = map(function (v) return v + old_pos end, hitbox_unit)
                 local     hitbox = map(function (v) return v +     pos end, hitbox_unit)
                 local boxes = get_hitboxes(hitbox, collision_boxes)
@@ -724,12 +739,18 @@ while not rl.WindowShouldClose() do
                 -- collision with tiles
                 local ps = collide_tiles(hitbox, old_hitbox, boxes, axis, side)
                 points = append(points, ps)
+                return points, weak_collisions
+            end
 
-                if #points > 0 then
-                    local minf = side == 0 and maxf or minf
-                    local min_point = minf(function (p) return p.point end, points)
-                    local ps = filter(function (p) return p.point == min_point end, points)
-                    pos = vec.set_dim(pos, axis+1, ps[1].point - vec.dim(size, axis+1) * side)
+            local lpoints, rweak = side_collision(0)
+            local rpoints, lweak = side_collision(1)
+            weak_collisions = append(weak_collisions, rweak, lweak)
+            for _, cs in ipairs(pick(lpoints, rpoints)) do
+                if #cs.points > 0 then
+                    local minf = cs.side == 0 and maxf or minf
+                    local min_point = minf(function (p) return p.point end, cs.points)
+                    local ps = filter(function (p) return p.point == min_point end, cs.points)
+                    pos = vec.set_dim(pos, axis+1, ps[1].point - vec.dim(size, axis+1) * cs.side)
                     collisions = append(collisions, ps)
                 end
             end
