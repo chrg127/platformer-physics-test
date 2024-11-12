@@ -428,6 +428,9 @@ while not rl.WindowShouldClose() do
     tprint("dt = " .. tostring(dt))
 
     function carry_entities(ids, movement)
+        if vec.eq(movement, vec.zero) then
+            return
+        end
         for _, id in ipairs(ids) do
             entities[id].pos = entities[id].pos + movement
             if entities[id].carrying ~= nil then
@@ -436,7 +439,6 @@ while not rl.WindowShouldClose() do
         end
     end
 
-    -- first step entities that can carry stuff, but can't be carried
     for id, entity in ipairs(entities) do
         local info = entity_info[entity.type]
         if entity.type == ENTITY.MOVING_PLATFORM then
@@ -453,17 +455,10 @@ while not rl.WindowShouldClose() do
                 end
             end
             entity.carrying = {}
-        end
-    end
-
-    -- handle the rest of the entities
-    for id, entity in ipairs(entities) do
-        local info = entity_info[entity.type]
-        if entity.type == ENTITY.BOULDER then
+        elseif entity.type == ENTITY.BOULDER then
             entity.vel = entity.vel + vec.v2(0, GRAVITY) * dt
             entity.old_pos = entity.pos
             entity.pos = entity.pos + entity.vel * dt
-            entity.carrying = {}
         elseif entity.type == ENTITY.PLAYER then
             if rl.IsKeyReleased(rl.KEY_R) then
                 entity.gravity_dir = -entity.gravity_dir
@@ -823,6 +818,13 @@ while not rl.WindowShouldClose() do
                 end
             end
             pprint("vel (adjusted) = " .. tostring(entity.vel))
+
+            -- for boulders i do the carrying operation here... it doesn't seem
+            -- to make a difference, so long as you calculate the position correctly
+            if entity.carrying ~= nil then
+                carry_entities(entity.carrying, entity.pos - entity.old_pos)
+                entity.carrying = {}
+            end
 
             for _, c in ipairs(collisions) do
                 if c.entity_id and entities[c.entity_id].carrying ~= nil
