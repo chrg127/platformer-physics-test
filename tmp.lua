@@ -136,3 +136,17 @@ end
                     end
                 end
 
+        -- or findf(function (c) return c.blocking and c.tile and vec.eq(c.dir, vec.v2(side, 0)) end, b.old_collisions)
+
+function copy_table(t)
+    local r = {}
+    for k, v in pairs(t) do
+        if type(v) == 'table' then
+            r[k] = copy_table(v)
+        else
+            r[k] = v
+        end
+    end
+    return r
+end
+
