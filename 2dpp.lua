@@ -94,11 +94,11 @@ function append(...)
 end
 
 function minf(f, t)
-    return foldl(function (k, v, r) return math.min(f(v), r) and f(v) or r end,  math.huge, t)
+    return foldl(function (k, v, r) return math.min(f(v), r) end,  math.huge, t)
 end
 
 function maxf(f, t)
-    return foldl(function (k, v, r) return math.max(f(v), r) and f(v) or r end, -math.huge, t)
+    return foldl(function (k, v, r) return math.max(f(v), r) end, -math.huge, t)
 end
 
 function partition(pred, t)
