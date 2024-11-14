@@ -585,7 +585,7 @@ while not rl.WindowShouldClose() do
         end
 
         function get_tile_dim(tile)
-            local hb = aabb(t2p(tile), vec.v2(TILE_SIZE, TILE_SIZE))
+            local hb = aabb(t2p(tile), vec.one * TILE_SIZE - vec.one)
             local p  = box_collision(hitbox, old_hitbox, hb, hb, axis, side, info_of(tile).normals)
             return p ~= nil and mkcoll(p, axis, side, tile) or nil
         end
@@ -685,20 +685,6 @@ while not rl.WindowShouldClose() do
         return false
     end
 
-    function rank(collisions)
-        return #collisions == 0 and 0
-            or findf(function (c) return c.tile end, collisions) and 3
-            or findf(function (c) return c.entity_id and entities[c.entity_id].type == ENTITY.MOVING_PLATFORM end, collisions) and 2
-            or 1
-    end
-
-    function pick(a, b)
-        local ranka, rankb = rank(a), rank(b)
-        return ranka > rankb and { { points = a, side = 0 } }
-            or rankb > ranka and { { points = b, side = 1 } }
-            or { { points = a, side = 0 }, { points = b, side = 1 } }
-    end
-
     function entity_collision(pos, old_pos, hitbox_unit, collision_boxes, entity_id)
         local size = hitbox_unit[2] - hitbox_unit[1]
         local collisions = {}
@@ -737,6 +723,20 @@ while not rl.WindowShouldClose() do
                 return points, weak_collisions
             end
 
+            function rank(collisions)
+                return #collisions == 0 and 0
+                    or findf(function (c) return c.tile end, collisions) and 3
+                    or findf(function (c) return c.entity_id and entities[c.entity_id].type == ENTITY.MOVING_PLATFORM end, collisions) and 2
+                    or 1
+            end
+
+            function pick(a, b)
+                local ranka, rankb = rank(a), rank(b)
+                return ranka > rankb and { { points = a, side = 0 } }
+                    or rankb > ranka and { { points = b, side = 1 } }
+                    or { { points = a, side = 0 }, { points = b, side = 1 } }
+            end
+
             local lpoints, rweak = side_collision(0)
             local rpoints, lweak = side_collision(1)
             weak_collisions = append(weak_collisions, rweak, lweak)
@@ -744,9 +744,8 @@ while not rl.WindowShouldClose() do
                 if #cs.points > 0 then
                     local minf = cs.side == 0 and maxf or minf
                     local min_point = minf(function (p) return p.point end, cs.points)
-                    local ps = filter(function (p) return p.point == min_point end, cs.points)
-                    pos = vec.set_dim(pos, axis+1, ps[1].point - vec.dim(size, axis+1) * cs.side)
-                    collisions = append(collisions, ps)
+                    pos = vec.set_dim(pos, axis+1, min_point - vec.dim(size, axis+1) * cs.side)
+                    collisions = append(collisions, filter(function (p) return p.point == min_point end, cs.points))
                 end
             end
         end
