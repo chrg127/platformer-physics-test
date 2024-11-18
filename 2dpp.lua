@@ -275,6 +275,7 @@ end
 -- tiles have a "border" where collisions register. this constant controls how big it is
 local TILE_TOLLERANCE = 5
 local SLOPE_TOLLERANCE = 2
+local ENTITY_TOLLERANCE = 8
 
 function generate_collision_hitboxes(hb, offs)
     return {
@@ -323,7 +324,7 @@ local entity_info = {
         hitbox             = { vec.zero, vec.v2(2, 2) * TILE_SIZE },
         draw_size          = vec.v2(2, 2) * TILE_SIZE,
         normals            = { vec.v2(0, -1), vec.v2(0, 1), vec.v2(1, 0), vec.v2(-1, 0) },
-        collision_hitboxes = generate_collision_hitboxes({ vec.zero, vec.v2(2, 2) * TILE_SIZE }, { 5, 0 })
+        collision_hitboxes = generate_collision_hitboxes({ vec.zero, vec.v2(2, 2) * TILE_SIZE }, { 5, 4 })
     },
 }
 
@@ -369,11 +370,11 @@ end
 local entities = {
     player(vec.v2(SCREEN_WIDTH, SCREEN_HEIGHT) * TILE_SIZE / 2
          + vec.v2(TILE_SIZE/2 - 8 * TILE_SIZE, -8 * TILE_SIZE)),
-    -- moving_platform(vec.v2(-3, 7), vec.v2(6, 0)),
     boulder(vec.v2(1, 7)),
-    -- boulder(vec.v2(4, 7)),
+    -- moving_platform(vec.v2(-3, 7), vec.v2(6, 0)),
+    boulder(vec.v2(4, 7)),
     -- boulder(vec.v2(6, 7)),
-    -- moving_platform(vec.v2(10, 7), vec.v2(-6, 0)),
+    moving_platform(vec.v2(10, 7), vec.v2(6, 0)),
     -- moving_platform(vec.v2(0, 22), vec.v2(6, 0)),
 }
 
@@ -538,7 +539,7 @@ while not rl.WindowShouldClose() do
     end
 
     -- compute collision point of box a against box b, with b's normals
-    function box_collision(a, old_a, b, old_b, axis, side_a, normals)
+    function box_collision(a, old_a, b, old_b, axis, side_a, normals, toll)
         local v = side_a == 0 and 1 or -1
         local normal = vec.set_dim(vec.zero, axis+1, v)
         local ref = axis == 0 and vec.x or vec.y
@@ -553,7 +554,7 @@ while not rl.WindowShouldClose() do
         local ap = ref(old_a[side_a+1])
         local bp = ref(    b[side_b+1])
         local lteq = side_a == 0 and gteq or lteq
-        return lteq(ap, bp + TILE_TOLLERANCE * -v) and bp or nil
+        return lteq(ap, bp + toll * -v) and bp or nil
     end
 
     function collide_tiles(hitbox, old_hitbox, boxes, axis, side)
@@ -586,7 +587,7 @@ while not rl.WindowShouldClose() do
 
         function get_tile_dim(tile)
             local hb = aabb(t2p(tile), vec.one * TILE_SIZE - vec.one)
-            local p  = box_collision(hitbox, old_hitbox, hb, hb, axis, side, info_of(tile).normals)
+            local p  = box_collision(hitbox, old_hitbox, hb, hb, axis, side, info_of(tile).normals, TILE_TOLLERANCE)
             return p ~= nil and mkcoll(p, axis, side, tile) or nil
         end
 
@@ -668,17 +669,26 @@ while not rl.WindowShouldClose() do
     -- when colliding with other entities (except moving platforms),
     -- if they're moving towards you, then resolve collision
     function should_collide(id_a, id_b, axis, side, a, b)
-        if axis == 1 or b.type == ENTITY.MOVING_PLATFORM
-        or not (a.on_ground and b.on_ground)
-        or findf(function (c) return vec.eq(c.dir, vec.v2(side == 0 and -1 or 1, 0)) end, b.old_collisions) then
+        if axis == 1 then
             return true
         end
+        local tmp = side == 0 and -1 or 1
         local adir = a.pos.x - a.old_pos.x
         local bdir = b.pos.x - b.old_pos.x
-        if sign(adir) == 0 and (sign(bdir) ~= 0 or id_b > id_a) then
+        if not (a.on_ground and b.on_ground)
+        or (b.type == ENTITY.MOVING_PLATFORM and tmp == -sign(bdir))
+        or findf(function (c) return vec.eq(c.dir, vec.v2(tmp, 0)) end, b.old_collisions)
+        -- or (sign(adir) == 0 and (sign(bdir) ~= 0 or id_b > id_a))
+        -- or (sign(adir) == -sign(bdir) and adir > bdir)
+        then
             return true
         end
-        if sign(adir) == -sign(bdir) then
+        if sign(adir) == 0 and (sign(bdir) ~= 0) then
+            -- fmt.print("not moving: id_a = ", id_a, "adir = ", adir, "id_b = ", id_b, "bdir = ", bdir)
+            return true
+        end
+        if (sign(adir) == -sign(bdir) and adir > bdir) then
+            -- fmt.print("id_a = ", id_a, "adir = ", adir, "id_b = ", id_b, "bdir = ", bdir)
             -- if two entities are pushing against each other, the faster wins
             return adir > bdir
         end
@@ -690,6 +700,7 @@ while not rl.WindowShouldClose() do
         local collisions = {}
         local weak_collisions = {}
         for axis = 0, 1 do
+            -- collision with entities
             function side_collision(side)
                 local weak_collisions = {}
                 local old_hitbox = map(function (v) return v + old_pos end, hitbox_unit)
@@ -697,7 +708,6 @@ while not rl.WindowShouldClose() do
                 local boxes = get_hitboxes(hitbox, collision_boxes)
                 local points = {}
 
-                -- collision with entities
                 for _, e in ipairs(get_entities(entity_id, boxes[axis+1][side+1])) do
                     local info = entity_info[e.entity.type]
                     if should_collide(entity_id, e.id, axis, side, entities[entity_id], e.entity) then
@@ -705,7 +715,7 @@ while not rl.WindowShouldClose() do
                             hitbox, old_hitbox,
                             aabb(e.entity.pos,     info.hitbox[2] - info.hitbox[1]),
                             aabb(e.entity.old_pos, info.hitbox[2] - info.hitbox[1]),
-                            axis, side, info.normals
+                            axis, side, info.normals, ENTITY_TOLLERANCE
                         )
                         if p ~= nil then
                             local dir = vec.set_dim(vec.zero, axis+1, side == 0 and -1 or 1)
@@ -716,17 +726,13 @@ while not rl.WindowShouldClose() do
                         table.insert(weak_collisions, { entity_id = e.id, dir = dir })
                     end
                 end
-
-                -- collision with tiles
-                local ps = collide_tiles(hitbox, old_hitbox, boxes, axis, side)
-                points = append(points, ps)
                 return points, weak_collisions
             end
 
             function rank(collisions)
                 return #collisions == 0 and 0
                     or findf(function (c) return c.tile end, collisions) and 3
-                    or findf(function (c) return c.entity_id and entities[c.entity_id].type == ENTITY.MOVING_PLATFORM end, collisions) and 2
+                    or findf(function (c) return c.entity_id and entities[c.entity_id].type ~= ENTITY.MOVING_PLATFORM end, collisions) and 2
                     or 1
             end
 
@@ -748,6 +754,20 @@ while not rl.WindowShouldClose() do
                     collisions = append(collisions, filter(function (p) return p.point == min_point end, cs.points))
                 end
             end
+
+            for side = 0, 1 do
+                -- collision with tiles
+                local old_hitbox = map(function (v) return v + old_pos end, hitbox_unit)
+                local     hitbox = map(function (v) return v +     pos end, hitbox_unit)
+                local boxes = get_hitboxes(hitbox, collision_boxes)
+                local points = collide_tiles(hitbox, old_hitbox, boxes, axis, side)
+                if #points > 0 then
+                    local minf = side == 0 and maxf or minf
+                    local min_point = minf(function (p) return p.point end, points)
+                    pos = vec.set_dim(pos, axis+1, min_point - vec.dim(size, axis+1) * side)
+                    collisions = append(collisions, filter(function (p) return p.point == min_point end, points))
+                end
+            end
         end
         return pos, collisions, weak_collisions
     end
@@ -759,7 +779,7 @@ while not rl.WindowShouldClose() do
         local info = entity_info[entity.type]
         if entity.type == ENTITY.BOULDER or entity.type == ENTITY.PLAYER then
             function pprint(s)
-                if entity.type ~= ENTITY.PLAYER then
+                if entity.type == ENTITY.PLAYER then
                     tprint(s)
                 end
             end
@@ -768,7 +788,6 @@ while not rl.WindowShouldClose() do
                 entity.pos, entity.old_pos, info.hitbox, info.collision_hitboxes, id
             )
             entity.pos = pos
-            pprint(fmt.tostring("collisions = ", collisions))
 
             -- setup ground flag so it behaves well with gravity
             local old_on_ground = entity.on_ground
@@ -811,10 +830,10 @@ while not rl.WindowShouldClose() do
                     return d ~= 0 and sign(d) == sign(vec.dim(entity.vel, axis+1))
                 end, collisions) then
                     entity.vel = vec.set_dim(entity.vel, axis+1, 0)
-                elseif #weak_collisions > 0 then
-                    local value = clamp(vec.dim(entity.vel, axis+1), -VEL_BOULDER_CAP, VEL_BOULDER_CAP)
-                    entity.vel = vec.set_dim(entity.vel, axis+1, value)
                 end
+            end
+            if entity.vel.x ~= 0 and findf(function (c) return c.dir.x ~= 0 end, weak_collisions) then
+                entity.vel.x = clamp(entity.vel.x, -VEL_BOULDER_CAP, VEL_BOULDER_CAP)
             end
             pprint("vel (adjusted) = " .. tostring(entity.vel))
 
