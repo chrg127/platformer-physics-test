@@ -378,11 +378,11 @@ end
 local entities = {
     player(vec.v2(SCREEN_WIDTH, SCREEN_HEIGHT) * TILE_SIZE / 2
          + vec.v2(TILE_SIZE/2 - 8 * TILE_SIZE, -8 * TILE_SIZE)),
-    boulder(vec.v2(1, 7)),
+    boulder(vec.v2(6, 7)),
     -- moving_platform(vec.v2(-3, 7), vec.v2(6, 0)),
     boulder(vec.v2(4, 7)),
     -- boulder(vec.v2(6, 7)),
-    moving_platform(vec.v2(10, 7), vec.v2(6, 0)),
+    -- moving_platform(vec.v2(10, 7), vec.v2(6, 0)),
     -- moving_platform(vec.v2(0, 22), vec.v2(6, 0)),
 }
 
@@ -451,7 +451,6 @@ while not rl.WindowShouldClose() do
     for id, entity in ipairs(entities) do
         local info = entity_info[entity.type]
         if entity.type == ENTITY.MOVING_PLATFORM then
-            entity.old_pos = entity.pos
             entity.pos = entity.pos + entity.dir * dt
             -- handle direction change
             for _, axis in ipairs{1,2} do
@@ -464,7 +463,6 @@ while not rl.WindowShouldClose() do
         elseif entity.type == ENTITY.BOULDER then
             entity.vel = entity.vel + vec.v2(0, GRAVITY) * dt
             entity.vel.y = clamp(entity.vel.y, -VEL_Y_CAP, VEL_Y_CAP)
-            entity.old_pos = entity.pos
             entity.pos = entity.pos + entity.vel * dt
         elseif entity.type == ENTITY.PLAYER then
             if rl.IsKeyReleased(rl.KEY_R) then
@@ -504,7 +502,6 @@ while not rl.WindowShouldClose() do
                 entity.vel.y = JUMP_VEL_MIN * entity.gravity_dir
             end
 
-            entity.old_pos = entity.pos
             if not FREE_MOVEMENT then
                 entity.pos = entity.pos + entity.vel * dt
             else
@@ -592,7 +589,7 @@ while not rl.WindowShouldClose() do
         end
 
         function get_tile_dim(tile)
-            local hb = aabb(t2p(tile), vec.one * TILE_SIZE - vec.one)
+            local hb = aabb(t2p(tile), vec.one * TILE_SIZE)
             local p  = box_collision(hitbox, old_hitbox, hb, hb, axis, side, info_of(tile).normals, TILE_TOLLERANCE)
             return p ~= nil and mkcoll(p, axis, side, tile) or nil
         end
@@ -853,17 +850,19 @@ while not rl.WindowShouldClose() do
                 tprint("vel (adjusted) = " .. tostring(entity.vel))
                 tprint("coyote = " .. tostring(entity.coyote_time))
                 tprint("jump buf = " .. tostring(entity.jump_buf))
-                tprint(fmt.tostring_opts({indent=2}, "collisions = ", map(function (c) return { c.tile, c.entity_id } end, collisions)))
+                tprint(fmt.tostring("collisions = ", collisions))
             end
         end
         return entity
     end, entities)
 
-    for _, entity in ipairs(entities) do
+    local old_positions = map(function (e) return e.pos end, entities)
+    for id, entity in ipairs(entities) do
         if entity.type == ENTITY.MOVING_PLATFORM or entity.type == ENTITY.BOULDER then
             carry_entities(entity.carrying, entity.pos - entity.old_pos)
             entity.carrying = {}
         end
+        entity.old_pos = old_positions[id]
     end
 
     for id, entity in ipairs(entities) do
