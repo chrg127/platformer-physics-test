@@ -379,11 +379,8 @@ local entities = {
     player(vec.v2(SCREEN_WIDTH, SCREEN_HEIGHT) * TILE_SIZE / 2
          + vec.v2(TILE_SIZE/2 - 8 * TILE_SIZE, -8 * TILE_SIZE)),
     boulder(vec.v2(6, 7)),
-    -- moving_platform(vec.v2(-3, 7), vec.v2(6, 0)),
     boulder(vec.v2(4, 7)),
-    -- boulder(vec.v2(6, 7)),
-    -- moving_platform(vec.v2(10, 7), vec.v2(6, 0)),
-    -- moving_platform(vec.v2(0, 22), vec.v2(6, 0)),
+    moving_platform(vec.v2(10, 7), vec.v2(6, 0)),
 }
 
 -- physics constant for the player, change these to control the "feel" of the game
@@ -589,7 +586,7 @@ while not rl.WindowShouldClose() do
         end
 
         function get_tile_dim(tile)
-            local hb = aabb(t2p(tile), vec.one * TILE_SIZE)
+            local hb = aabb(t2p(tile), vec.one * TILE_SIZE - vec.one)
             local p  = box_collision(hitbox, old_hitbox, hb, hb, axis, side, info_of(tile).normals, TILE_TOLLERANCE)
             return p ~= nil and mkcoll(p, axis, side, tile) or nil
         end
@@ -670,17 +667,19 @@ while not rl.WindowShouldClose() do
         end, map(function (_, id) return id end, entities))
     end
 
-    -- when colliding with other entities (except moving platforms),
-    -- if they're moving towards you, then resolve collision
-    function should_collide(axis, side, a, b)
+    function should_collide(axis, side, a, b, b_id, hitbox, old_hitbox)
         if axis == 1 then
             return true
         end
-        local tmp = side == 0 and -1 or 1
         local adir = a.pos.x - a.old_pos.x
         local bdir = b.pos.x - b.old_pos.x
         if b.type == ENTITY.MOVING_PLATFORM then
-            return true
+            -- if collision resolution put something inside a platform,
+            -- make sure it stops trying to collide with it
+            local info = entity_info[b.type]
+            local r1 = rec(old_hitbox[1], old_hitbox[2] - old_hitbox[1])
+            local r2 = rec(b.old_pos, info.hitbox[2] - info.hitbox[1])
+            return not rl.CheckCollisionRecs(r1, r2)
         end
         if sign(adir) == 0 and sign(bdir) ~= 0 and b.on_ground and a.on_ground then
             return true
@@ -688,25 +687,15 @@ while not rl.WindowShouldClose() do
         if sign(adir) ~= 0 and (not b.on_ground or sign(bdir) == 0 and not a.on_ground) then
             return true
         end
+        local tmp = side == 0 and -1 or 1
         if findf(function (c) return vec.eq(c.dir, vec.v2(tmp, 0)) end, b.old_collisions) then
             return true
         end
         if (sign(adir) == -sign(bdir) and adir > bdir) then
-            -- if two entities are pushing against each other, the faster wins
+            -- if two entities are pushing against each other, the faster wins (theoretically)
             return adir > bdir
         end
         return false
-    end
-
-    function platform_should(axis, side, a, b, b_id, hitbox, old_hitbox)
-        if b.type ~= ENTITY.MOVING_PLATFORM then
-            return true
-        end
-        local info = entity_info[b.type]
-        local r1 = rec(old_hitbox[1], old_hitbox[2] - old_hitbox[1])
-        local r2 = rec(b.old_pos, info.hitbox[2] - info.hitbox[1])
-        return not rl.CheckCollisionRecs(r1, r2)
-            or findf(function (c) return c.entity_id == b_id end, a.old_collisions)
     end
 
     function resolve_collisions(pos, old_pos, hitbox_unit, collision_boxes, entity_id)
@@ -739,8 +728,7 @@ while not rl.WindowShouldClose() do
                     for _, id in ipairs(filter(function (id) return pred(id, entities[id]) end, ids)) do
                         local entity = entities[id]
                         local info = entity_info[entity.type]
-                        if should_collide(axis, side, entities[entity_id], entity)
-                        and platform_should(axis, side, entities[entity_id], entity, id, hitbox, old_hitbox) then
+                        if should_collide(axis, side, entities[entity_id], entity, id, hitbox, old_hitbox) then
                             local p = box_collision(
                                 hitbox, old_hitbox,
                                 aabb(entity.pos,     info.hitbox[2] - info.hitbox[1]),
@@ -761,7 +749,8 @@ while not rl.WindowShouldClose() do
             end
 
             do_collision(entity_collision(function (id, e) return e.type == ENTITY.MOVING_PLATFORM end))
-            do_collision(entity_collision(function (id, e) return e.type ~= ENTITY.MOVING_PLATFORM end))
+            do_collision(entity_collision(function (id, e) return e.type ~= ENTITY.MOVING_PLATFORM and (e.pos - e.old_pos).x ~= 0 end))
+            do_collision(entity_collision(function (id, e) return e.type ~= ENTITY.MOVING_PLATFORM and (e.pos - e.old_pos).x == 0 end))
             do_collision(function (side, hitbox, old_hitbox, boxes)
                 return collide_tiles(hitbox, old_hitbox, boxes, axis, side), {}
             end)
@@ -821,7 +810,9 @@ while not rl.WindowShouldClose() do
                     entity.vel = vec.set_dim(entity.vel, axis+1, 0)
                 end
             end
-            if math.abs(entity.vel.x) > VEL_BOULDER_CAP and findf(function (c) return c.dir.x ~= 0 end, weak_collisions) then
+            if math.abs(entity.vel.x) > VEL_BOULDER_CAP and findf(function (c)
+                return c.dir.x ~= 0 and entities[c.entity_id].type ~= ENTITY.MOVING_PLATFORM
+            end, weak_collisions) then
                 entity.vel.x = clamp(entity.vel.x, -VEL_BOULDER_CAP, VEL_BOULDER_CAP)
             end
 
@@ -850,7 +841,6 @@ while not rl.WindowShouldClose() do
                 tprint("vel (adjusted) = " .. tostring(entity.vel))
                 tprint("coyote = " .. tostring(entity.coyote_time))
                 tprint("jump buf = " .. tostring(entity.jump_buf))
-                tprint(fmt.tostring("collisions = ", collisions))
             end
         end
         return entity
