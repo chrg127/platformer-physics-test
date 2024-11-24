@@ -246,12 +246,6 @@ function slope_diag_point(to, info, value, dim, dim_to)
     return     lerp(dim_to(info.slope.points[1]), dim_to(info.slope.points[2]), t)
 end
 
-function slope_diag_point_y(to, info, value)
-    local yu = slope_diag_point(to, info, value, vec.x, vec.y)
-    return (yu < 0 or yu > info.slope.size.y) and math.huge
-        or to.y + yu * TILE_SIZE
-end
-
 function slope_tiles(t)
     local res = {}
     local origin = t - info_of(t).slope.origin
@@ -597,16 +591,21 @@ while not rl.WindowShouldClose() do
             if dir ~= side or vec.dot(hitbox[1] - old_hitbox[1], info.normals[1]) >= 0 then
                 return {}
             end
-            local to    = t2p(tile - info.slope.origin)
-            local y     = slope_diag_point_y(to, info,     hitbox[1].x + size.x/2)
-            local old_y = slope_diag_point_y(to, info, old_hitbox[1].x + size.x/2)
-            if y == math.huge then
+            local to = t2p(tile - info.slope.origin)
+            local yu = slope_diag_point(to, info, hitbox[1].x + size.x/2, vec.x, vec.y)
+            if lteq(yu, 0) or gteq(yu, info.slope.size.y) then
                 return {}
             end
+            local y = to.y + yu * TILE_SIZE
+            local old_y = to.y + TILE_SIZE * slope_diag_point(to, info, old_hitbox[1].x + size.x/2, vec.x, vec.y)
             local lteq = dir == 0 and gteq or lteq
             local toll = SLOPE_TOLLERANCE * -sign(info.normals[1].y)
-            if (old_y == math.huge or lteq(old_hitbox[dir+1].y, old_y + toll))
+            if (lteq(old_hitbox[dir+1].y, old_y + toll))
             and not lteq(hitbox[dir+1].y, y) then
+                tprint(fmt.tostring("returning y = ", y, "old_y = ", old_y))
+                tprint(fmt.tostring("hitbox = ", hitbox))
+                tprint(fmt.tostring("old_hitbox = ", old_hitbox))
+                tprint(fmt.tostring("dir = ", dir, "side = ", side, "toll = ", toll))
                 return { mkcoll(y, axis, side, tile) }
             end
             return {}
