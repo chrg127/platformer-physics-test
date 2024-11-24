@@ -279,14 +279,17 @@ local TILE_TOLLERANCE = 5
 local SLOPE_TOLLERANCE = 2
 local ENTITY_TOLLERANCE = 8
 
-function generate_collision_hitboxes(hb, offs)
+local HEIGHT_UP_HB = 16 -- keep high to make slopes work
+local WIDTH_LR_HB = 5
+
+function generate_collision_hitboxes(hb, dz)
     return {
         {
-            { vec.v2(hb[1].x  , hb[1].y + offs[1]), vec.v2(hb[1].x+5, hb[2].y - offs[1]) }, -- left
-            { vec.v2(hb[2].x-5, hb[1].y + offs[1]), vec.v2(hb[2].x  , hb[2].y - offs[1]) }, -- right
+            { vec.v2(hb[1].x            , hb[1].y + dz[1]), vec.v2(hb[1].x+WIDTH_LR_HB, hb[2].y - dz[1]) }, -- left
+            { vec.v2(hb[2].x-WIDTH_LR_HB, hb[1].y + dz[1]), vec.v2(hb[2].x            , hb[2].y - dz[1]) }, -- right
         }, {
-            { vec.v2(hb[1].x + offs[2], hb[1].y   ), vec.v2(hb[2].x - offs[2], hb[1].y+10) }, -- up
-            { vec.v2(hb[1].x + offs[2], hb[2].y-10), vec.v2(hb[2].x - offs[2], hb[2].y   ) }, -- down
+            { vec.v2(hb[1].x + dz[2], hb[1].y             ), vec.v2(hb[2].x - dz[2], hb[1].y+HEIGHT_UP_HB) }, -- up
+            { vec.v2(hb[1].x + dz[2], hb[2].y-HEIGHT_UP_HB), vec.v2(hb[2].x - dz[2], hb[2].y             ) }, -- down
         }, {
             { vec.v2(hb[1].x  , hb[1].y), vec.v2(hb[1].x+1, hb[2].y) }, -- left, for slopes
             { vec.v2(hb[2].x-1, hb[1].y), vec.v2(hb[2].x  , hb[2].y) }, -- right, for slopes
@@ -551,7 +554,7 @@ while not rl.WindowShouldClose() do
         return lteq(ap, bp + toll * -v) and bp or nil
     end
 
-    function collide_tiles(hitbox, old_hitbox, boxes, axis, side)
+    function collide_tiles(hitbox, old_hitbox, boxes, axis, side, on_ground)
         local tiles = get_tiles(boxes[axis+1][side+1], identity)
         if axis == 0 and boxes[3] ~= nil then
             tiles = append(tiles, get_tiles(boxes[3][side+1], is_slope))
@@ -597,15 +600,13 @@ while not rl.WindowShouldClose() do
                 return {}
             end
             local y = to.y + yu * TILE_SIZE
-            local old_y = to.y + TILE_SIZE * slope_diag_point(to, info, old_hitbox[1].x + size.x/2, vec.x, vec.y)
+            local old_yu = slope_diag_point(to, info, old_hitbox[1].x + size.x/2, vec.x, vec.y)
+            local old_y  = to.y + old_yu * TILE_SIZE
             local lteq = dir == 0 and gteq or lteq
             local toll = SLOPE_TOLLERANCE * -sign(info.normals[1].y)
-            if (lteq(old_hitbox[dir+1].y, old_y + toll))
+            if ((lteq(old_yu, 0) or gteq(old_yu, info.slope.size.y)) and on_ground
+                or lteq(old_hitbox[dir+1].y, old_y + toll))
             and not lteq(hitbox[dir+1].y, y) then
-                tprint(fmt.tostring("returning y = ", y, "old_y = ", old_y))
-                tprint(fmt.tostring("hitbox = ", hitbox))
-                tprint(fmt.tostring("old_hitbox = ", old_hitbox))
-                tprint(fmt.tostring("dir = ", dir, "side = ", side, "toll = ", toll))
                 return { mkcoll(y, axis, side, tile) }
             end
             return {}
@@ -751,7 +752,7 @@ while not rl.WindowShouldClose() do
             do_collision(entity_collision(function (id, e) return e.type ~= ENTITY.MOVING_PLATFORM and (e.pos - e.old_pos).x ~= 0 end))
             do_collision(entity_collision(function (id, e) return e.type ~= ENTITY.MOVING_PLATFORM and (e.pos - e.old_pos).x == 0 end))
             do_collision(function (side, hitbox, old_hitbox, boxes)
-                return collide_tiles(hitbox, old_hitbox, boxes, axis, side), {}
+                return collide_tiles(hitbox, old_hitbox, boxes, axis, side, entities[entity_id].on_ground), {}
             end)
         end
         return pos, collisions, weak_collisions
