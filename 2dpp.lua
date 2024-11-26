@@ -196,16 +196,16 @@ local tilemap = {
     {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 24,  0,  0,  0,  0,  0,  0,  0 },
     {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 24,  0,  0,  0,  0,  0,  0,  0 },
     {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 24,  0,  0,  0,  0,  0,  0,  0 },
-    {  0,  0,  0,  0,  0,  0,  0, 25,  0,  0,  0,  0,  0,  0,  0,  0,  0, 24,  0,  0,  0,  0,  0,  0,  0 },
-    {  0,  0,  0,  0,  0,  0,  0, 25,  0,  0,  0,  0,  0,  0,  0,  0,  0, 24,  0,  0,  0,  0,  0,  0,  0 },
-    {  0,  0,  0,  0,  0,  0,  0, 25,  0,  0,  0,  0,  0,  0,  0,  0,  0, 24,  0,  0,  0,  0,  0,  0,  0 },
+    {  0,  0,  0,  0,  0,  0, 24, 25,  0,  0,  0,  0,  0,  0,  0,  0,  0, 24,  0,  0,  0,  0,  0,  0,  0 },
+    {  0,  0,  0,  0,  0,  0, 24, 25,  0,  0,  0,  0,  0,  0,  0,  0,  0, 24,  0,  0,  0,  0,  0,  0,  0 },
+    {  0,  0,  0,  0,  0,  0, 24, 25,  0,  0,  0,  0,  0,  0,  0,  0,  0, 24,  0,  0,  0,  0,  0,  0,  0 },
     {  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  0,  3,  0,  0, 15, 16 },
     {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  0,  0,  6,  0,  0, 17, 18,  0,  0,  0,  0,  4,  0,  0 },
     {  0,  0,  0,  0,  0,  1,  0,  1,  3,  0,  0,  0,  6,  0,  0,  0,  1,  2,  0,  0,  0,  4,  0,  0,  0 },
     {  0,  0,  0,  7,  9,  0,  1,  0,  0,  1,  1,  6,  0,  0,  0,  0,  0,  0,  0,  0,  4,  0,  0,  0,  0 },
     {  0,  0,  0,  8, 10,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  4,  0,  0,  0,  0,  0 },
     {  0,  0,  0, 13, 11,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  4,  0,  0,  0,  0,  0,  0 },
-    {  0,  0,  0, 14, 12,  1,  1,  1,  1,  1,  0,  0,  0,  0,  0,  0,  0,  7,  0,  0,  0,  0,  0,  0,  0 },
+    {  0,  0,  0, 14, 12,  1,  1,  1,  1,  1,  0,  0,  0,  0,  3,  0,  0,  7,  0,  0,  0,  0,  0,  0,  0 },
     {  0,  0,  0,  4,  3,  1,  0,  0,  0,  1,  1,  1,  2,  2,  0,  0,  0,  8,  0, 17, 18,  0,  3,  0,  0 },
     {  1,  1,  1,  5,  6,  1,  0,  0,  0,  1,  0,  0,  0,  0,  0,  0,  0,  1,  0, 21, 22,  0,  6,  0,  0 },
     {  1,  1,  1,  1,  1,  1,  0,  0,  0,  1,  1,  3,  0,  0,  0,  4,  1,  1,  1,  1,  1,  1,  1,  1,  0 },
@@ -374,18 +374,14 @@ end
 -- entities buffer, entity[1] is always the player
 local entities = {
     player(vec.v2(SCREEN_WIDTH, SCREEN_HEIGHT) * TILE_SIZE / 2
-         + vec.v2(TILE_SIZE/2 - 8 * TILE_SIZE, -8 * TILE_SIZE)),
-    boulder(vec.v2(6, 7)),
-    boulder(vec.v2(4, 7)),
-    moving_platform(vec.v2(10, 7), vec.v2(6, 0)),
+         + vec.v2(TILE_SIZE/2 - 13 * TILE_SIZE, -8 * TILE_SIZE)),
+    -- boulder(vec.v2(6, 7)),
+    -- boulder(vec.v2(4, 7)),
+    -- moving_platform(vec.v2(10, 7), vec.v2(6, 0)),
 }
 
--- physics constant for the player, change these to control the "feel" of the game
-
-local ACCEL = 700
-local DECEL = 300
-
--- the cap is in tiles, but you'd probably want to know how many pixels
+-- physics constant for the player
+-- when choosing a cap, you'd probably want to know how many pixels
 -- you're traveling each frame. the formulas are:
 --
 --  p = cap / fps, cap = p * fps
@@ -394,12 +390,17 @@ local DECEL = 300
 -- the minimum fps the game can have).
 -- in practice, only caps with a p >= 16 get really problematic (as that's where
 -- you start skipping tiles)
-
-local VEL_X_CAP = 10*30
+local VEL_X_CAP = 15*30
 local VEL_Y_CAP = 15*30
-local GRAVITY = 400
+
+-- acceleration is calculated by after how many tiles does the player reach
+-- the velocity cap. formula: a = cap**2 / (2*s)
+local ACCEL = VEL_X_CAP^2 / (2*7*TILE_SIZE)
+local DECEL = 300
+local GRAVITY = VEL_Y_CAP^2 / (2*10*TILE_SIZE)
 -- used when pressing the jump button while falling
-local SLOW_GRAVITY = 300
+local SLOW_GRAVITY = VEL_Y_CAP^2 / (2*20*TILE_SIZE)
+
 local JUMP_HEIGHT_MAX1 = 5 -- tiles
 local JUMP_HEIGHT_MAX2 = 6 -- tiles, max height is interpolated between 1 and 2
 local JUMP_HEIGHT_MIN  = 0.2 -- tiles
@@ -713,7 +714,9 @@ while not rl.WindowShouldClose() do
                     if #points > 0 then
                         local minf = side == 0 and maxf or minf
                         local min_point = minf(function (p) return p.point end, points)
-                        pos = vec.set_dim(pos, axis+1, min_point - vec.dim(size, axis+1) * side)
+                        pos = vec.set_dim(pos, axis+1, min_point
+                                                     - vec.dim(size, axis+1) * side
+                                                     - vec.dim(hitbox_unit[1], axis+1))
                         collisions = append(collisions, filter(function (p) return p.point == min_point end, points))
                     end
                 end
@@ -953,4 +956,3 @@ while not rl.WindowShouldClose() do
 
     tprint("")
 end
-
