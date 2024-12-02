@@ -603,11 +603,11 @@ while not rl.WindowShouldClose() do
             local y = to.y + yu * TILE_SIZE
             local old_yu = slope_diag_point(to, info, old_hitbox[1].x + size.x/2, vec.x, vec.y)
             local old_y  = to.y + old_yu * TILE_SIZE
-            local lteq = dir == 0 and gteq or lteq
+            local lt_eq = dir == 0 and gteq or lteq
             local toll = SLOPE_TOLLERANCE * -sign(info.normals[1].y)
             if ((lteq(old_yu, 0) or gteq(old_yu, info.slope.size.y)) and on_ground
-                or lteq(old_hitbox[dir+1].y, old_y + toll))
-            and not lteq(hitbox[dir+1].y, y) then
+                or lt_eq(old_hitbox[dir+1].y, old_y + toll))
+            and not lt_eq(hitbox[dir+1].y, y) then
                 return { mkcoll(y, axis, side, tile) }
             end
             return {}
