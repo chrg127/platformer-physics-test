@@ -344,6 +344,7 @@ function player(pos)
         gravity_dir    = 1,
         coyote_time    = 0,
         jump_buf       = false,
+        dead           = false,
     }
 end
 
@@ -887,12 +888,23 @@ while not rl.WindowShouldClose() do
                     end
                 end
 
+                for _, ca in ipairs(collisions) do
+                    for _, cb in ipairs(collisions) do
+                        if vec.eq(ca.dir, -cb.dir) then
+                            entity.dead = true
+                        end
+                    end
+                end
+
                 tprint("on ground = " .. tostring(entity.on_ground))
                 tprint("old ground = " .. tostring(old_on_ground))
                 tprint("pos (adjusted) = " .. tostring(entity.pos))
                 tprint("vel (adjusted) = " .. tostring(entity.vel))
                 tprint("coyote = " .. tostring(entity.coyote_time))
                 tprint("jump buf = " .. tostring(entity.jump_buf))
+                if entity.dead then
+                    tprint("DEAD!")
+                end
             end
         end
         return entity
