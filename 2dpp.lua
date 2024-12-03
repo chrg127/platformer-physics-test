@@ -1,5 +1,3 @@
-local fmt = require "fmt"
-
 local vec = {}
 
 vec.one  = rl.new("Vector2", 1, 1)
