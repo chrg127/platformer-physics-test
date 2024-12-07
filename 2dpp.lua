@@ -440,16 +440,16 @@ while not rl.WindowShouldClose() do
     -- an entity may carry 1+ entities which may carry 1+ entities...
     -- this forms a tree. walk it to setup carried entities position correctly
     function carry_entities(ids, movement)
-        if movement.y < 0 then
-            movement.y = 0
-        end
         for _, id in ipairs(ids) do
-            if entities[id].carrying ~= nil then
-                local m = entities[id].pos - entities[id].old_pos_carrying
-                carry_entities(entities[id].carrying, movement + m)
-                entities[id].carrying = {}
+            local entity = entities[id]
+            if entity.carrying ~= nil then
+                local m = entity.pos - entity.old_pos_carrying
+                carry_entities(entity.carrying, movement + m)
+                entity.carrying = {}
+                entity.old_pos_carrying = entity.pos
             end
-            entities[id].pos = entities[id].pos + movement
+            entity.pos = entity.pos + vec.v2(movement.x,
+                entity.gravity_dir == -sign(movement.y) and 0 or movement.y)
         end
     end
 
@@ -471,10 +471,6 @@ while not rl.WindowShouldClose() do
         end
     end
 
-    for id, entity in ipairs(entities) do
-        tprint(fmt.tostring("id = ", id, "carrying = ", entity.carrying, "is_root = ", entity.is_root))
-    end
-
     -- step all entities in this loop
     for id, entity in ipairs(entities) do
         local info = entity_info[entity.type]
@@ -489,25 +485,7 @@ while not rl.WindowShouldClose() do
                 end
             end
         elseif entity.type == ENTITY.BOULDER then
-            local accel_hor = (rl.IsKeyDown(rl.KEY_A)  and -ACCEL or 0)
-                            + (rl.IsKeyDown(rl.KEY_D) and  ACCEL or 0)
-            local decel_hor = entity.vel.x > 0 and -DECEL
-                           or entity.vel.x < 0 and  DECEL
-                           or 0
-            local gravity = rl.IsKeyDown(rl.KEY_Z) and not entity.on_ground and sign(entity.vel.y) == gravity_dir
-                        and SLOW_GRAVITY or GRAVITY
-            gravity = gravity * entity.gravity_dir
-            local accel = vec.v2(accel_hor + decel_hor, gravity)
-
-            if id == 2 then
-                entity.vel = entity.vel + accel * dt
-                entity.vel.x = clamp(entity.vel.x, -VEL_X_CAP, VEL_X_CAP)
-                if math.abs(entity.vel.x) < 4 then
-                    entity.vel.x = 0
-                end
-            else
-                entity.vel = entity.vel + vec.v2(0, GRAVITY) * dt
-            end
+            entity.vel = entity.vel + vec.v2(0, GRAVITY) * dt
             entity.vel.y = clamp(entity.vel.y, -VEL_Y_CAP, VEL_Y_CAP)
             entity.pos = entity.pos + entity.vel * dt
         elseif entity.type == ENTITY.PLAYER then
@@ -569,11 +547,6 @@ while not rl.WindowShouldClose() do
         if entity.type == ENTITY.MOVING_PLATFORM or (entity.type == ENTITY.BOULDER and entity.is_root) then
             carry_entities(entity.carrying, entity.pos - entity.old_pos_carrying)
             entity.carrying = {}
-        end
-    end
-
-    for id, entity in ipairs(entities) do
-        if entity.old_pos_carrying ~= nil then
             entity.old_pos_carrying = entity.pos
         end
     end
