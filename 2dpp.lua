@@ -1,3 +1,5 @@
+local fmt = require "fmt"
+
 local vec = {}
 
 vec.one  = rl.new("Vector2", 1, 1)
@@ -319,7 +321,7 @@ local entity_info = {
         hitbox      = { vec.zero, vec.v2(3, 1) * TILE_SIZE },
         normals     = { vec.v2(0, -1), vec.v2(0, 1), vec.v2(1, 0), vec.v2(-1, 0) },
         draw_size   = vec.v2(3, 1) * TILE_SIZE,
-        path_length = vec.v2(10, 0) * TILE_SIZE,
+        path_length = vec.v2(10, 5) * TILE_SIZE,
     },
     [ENTITY.BOULDER] = {
         hitbox             = { vec.zero, vec.v2(2, 2) * TILE_SIZE },
@@ -354,6 +356,7 @@ function moving_platform(pos, dir)
         start_pos = t2p(pos),
         dir       = dir * TILE_SIZE,
         carrying  = {},
+        old_pos_carrying = pos,
     }
 end
 
@@ -367,6 +370,8 @@ function boulder(pos)
         old_collisions = {},
         gravity_dir    = 1,
         carrying       = {},
+        is_root = false,
+        old_pos_carrying = pos,
     }
 end
 
@@ -374,9 +379,9 @@ end
 local entities = {
     player(vec.v2(SCREEN_WIDTH, SCREEN_HEIGHT) * TILE_SIZE / 2
          + vec.v2(TILE_SIZE/2 - 13 * TILE_SIZE, -8 * TILE_SIZE)),
-    boulder(t2p(vec.v2(6, 7))),
+    moving_platform(vec.v2(3, 5), vec.v2(0, 6)),
     boulder(t2p(vec.v2(4, 7))),
-    moving_platform(vec.v2(10, 7), vec.v2(6, 0)),
+    boulder(t2p(vec.v2(4, 4))),
 }
 
 -- physics constant for the player
@@ -435,37 +440,39 @@ while not rl.WindowShouldClose() do
     -- an entity may carry 1+ entities which may carry 1+ entities...
     -- this forms a tree. walk it to setup carried entities position correctly
     function carry_entities(ids, movement)
-        if vec.eq(movement, vec.zero) then
-            return
+        if movement.y < 0 then
+            movement.y = 0
         end
         for _, id in ipairs(ids) do
-            entities[id].pos = entities[id].pos + movement
             if entities[id].carrying ~= nil then
-                carry_entities(entities[id].carrying, movement)
+                local m = entities[id].pos - entities[id].old_pos_carrying
+                carry_entities(entities[id].carrying, movement + m)
+                entities[id].carrying = {}
             end
+            entities[id].pos = entities[id].pos + movement
         end
     end
 
-    -- save current positions so old_pos may be updated correctly
-    local old_positions = map(function (e) return e.pos end, entities)
     for id, entity in ipairs(entities) do
-        if entity.type == ENTITY.MOVING_PLATFORM or entity.type == ENTITY.BOULDER then
-            carry_entities(entity.carrying, entity.pos - entity.old_pos)
-            entity.carrying = {}
-        end
-        entity.old_pos = old_positions[id]
+        entity.old_pos = entity.pos
     end
 
     -- compute new carried entities
     for id, entity in ipairs(entities) do
         if entity.type == ENTITY.BOULDER or entity.type == ENTITY.PLAYER then
-            for _, c in ipairs(entity.old_collisions) do
-                if c.entity_id and entities[c.entity_id].carrying ~= nil
-                and vec.eq(c.dir, vec.v2(0, entity.gravity_dir)) then
-                    table.insert(entities[c.entity_id].carrying, id)
-                end
+            local cs = filter(function (c)
+                return c.entity_id and entities[c.entity_id].carrying ~= nil
+                and vec.eq(c.dir, vec.v2(0, entity.gravity_dir))
+            end, entity.old_collisions)
+            entity.is_root = #cs == 0 and entity.carrying ~= nil
+            for _, c in ipairs(cs) do
+                table.insert(entities[c.entity_id].carrying, id)
             end
         end
+    end
+
+    for id, entity in ipairs(entities) do
+        tprint(fmt.tostring("id = ", id, "carrying = ", entity.carrying, "is_root = ", entity.is_root))
     end
 
     -- step all entities in this loop
@@ -482,7 +489,25 @@ while not rl.WindowShouldClose() do
                 end
             end
         elseif entity.type == ENTITY.BOULDER then
-            entity.vel = entity.vel + vec.v2(0, GRAVITY) * dt
+            local accel_hor = (rl.IsKeyDown(rl.KEY_A)  and -ACCEL or 0)
+                            + (rl.IsKeyDown(rl.KEY_D) and  ACCEL or 0)
+            local decel_hor = entity.vel.x > 0 and -DECEL
+                           or entity.vel.x < 0 and  DECEL
+                           or 0
+            local gravity = rl.IsKeyDown(rl.KEY_Z) and not entity.on_ground and sign(entity.vel.y) == gravity_dir
+                        and SLOW_GRAVITY or GRAVITY
+            gravity = gravity * entity.gravity_dir
+            local accel = vec.v2(accel_hor + decel_hor, gravity)
+
+            if id == 2 then
+                entity.vel = entity.vel + accel * dt
+                entity.vel.x = clamp(entity.vel.x, -VEL_X_CAP, VEL_X_CAP)
+                if math.abs(entity.vel.x) < 4 then
+                    entity.vel.x = 0
+                end
+            else
+                entity.vel = entity.vel + vec.v2(0, GRAVITY) * dt
+            end
             entity.vel.y = clamp(entity.vel.y, -VEL_Y_CAP, VEL_Y_CAP)
             entity.pos = entity.pos + entity.vel * dt
         elseif entity.type == ENTITY.PLAYER then
@@ -537,6 +562,19 @@ while not rl.WindowShouldClose() do
             tprint("pos    = " .. tostring(entity.pos))
             tprint("vel    = " .. tostring(entity.vel))
             tprint("accel  = " .. tostring(accel))
+        end
+    end
+
+    for id, entity in ipairs(entities) do
+        if entity.type == ENTITY.MOVING_PLATFORM or (entity.type == ENTITY.BOULDER and entity.is_root) then
+            carry_entities(entity.carrying, entity.pos - entity.old_pos_carrying)
+            entity.carrying = {}
+        end
+    end
+
+    for id, entity in ipairs(entities) do
+        if entity.old_pos_carrying ~= nil then
+            entity.old_pos_carrying = entity.pos
         end
     end
 
@@ -796,9 +834,9 @@ while not rl.WindowShouldClose() do
 
             -- priority system! the ground is always prioritized first, others
             -- are a combination of what felt right to me
-            do_collision(entity_collision(function (id, e) return e.type == ENTITY.MOVING_PLATFORM end))
             do_collision(entity_collision(function (id, e) return e.type ~= ENTITY.MOVING_PLATFORM and (e.pos - e.old_pos).x ~= 0 end))
             do_collision(entity_collision(function (id, e) return e.type ~= ENTITY.MOVING_PLATFORM and (e.pos - e.old_pos).x == 0 end))
+            do_collision(entity_collision(function (id, e) return e.type == ENTITY.MOVING_PLATFORM end))
             do_collision(function (side, hitbox, old_hitbox, boxes)
                 return collide_tiles(hitbox, old_hitbox, boxes, axis, side, entities[entity_id].on_ground), {}
             end)
