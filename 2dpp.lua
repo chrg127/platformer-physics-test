@@ -1,5 +1,3 @@
-local fmt = require "fmt"
-
 local vec = {}
 
 vec.one  = rl.new("Vector2", 1, 1)
@@ -17,8 +15,8 @@ function vec.x(v) return v.x end
 function vec.y(v) return v.y end
 function vec.ref(v, d) return d == 1 and v.x or v.y end
 
-function vec.set(v, d, x)
-    return vec.v2(d == 1 and x or v.x, d == 2 and x or v.y)
+function vec.set(v, d, value)
+    return vec.v2(d == 1 and value or v.x, d == 2 and value or v.y)
 end
 
 function rec(pos, size)
@@ -370,7 +368,7 @@ function boulder(pos)
         old_collisions = {},
         gravity_dir    = 1,
         carrying       = {},
-        is_root = false,
+        is_root          = false,
         old_pos_carrying = pos,
     }
 end
@@ -382,6 +380,7 @@ local entities = {
     moving_platform(vec.v2(3, 5), vec.v2(0, 6)),
     boulder(t2p(vec.v2(4, 7))),
     boulder(t2p(vec.v2(4, 4))),
+    moving_platform(vec.v2(12, 7), vec.v2(6, 0)),
 }
 
 -- physics constant for the player
@@ -436,27 +435,6 @@ while not rl.WindowShouldClose() do
     tprint(tostring(rl.GetFPS()) .. " FPS")
     tprint("dt = " .. tostring(dt))
 
-    -- we first deal with changing position of carried entities.
-    -- an entity may carry 1+ entities which may carry 1+ entities...
-    -- this forms a tree. walk it to setup carried entities position correctly
-    function carry_entities(ids, movement)
-        for _, id in ipairs(ids) do
-            local entity = entities[id]
-            if entity.carrying ~= nil then
-                local m = entity.pos - entity.old_pos_carrying
-                carry_entities(entity.carrying, movement + m)
-                entity.carrying = {}
-                entity.old_pos_carrying = entity.pos
-            end
-            entity.pos = entity.pos + vec.v2(movement.x,
-                entity.gravity_dir == -sign(movement.y) and 0 or movement.y)
-        end
-    end
-
-    for id, entity in ipairs(entities) do
-        entity.old_pos = entity.pos
-    end
-
     -- compute new carried entities
     for id, entity in ipairs(entities) do
         if entity.type == ENTITY.BOULDER or entity.type == ENTITY.PLAYER then
@@ -464,7 +442,7 @@ while not rl.WindowShouldClose() do
                 return c.entity_id and entities[c.entity_id].carrying ~= nil
                 and vec.eq(c.dir, vec.v2(0, entity.gravity_dir))
             end, entity.old_collisions)
-            entity.is_root = #cs == 0 and entity.carrying ~= nil
+            entity.is_root = entity.carrying ~= nil and #cs == 0
             for _, c in ipairs(cs) do
                 table.insert(entities[c.entity_id].carrying, id)
             end
@@ -540,6 +518,23 @@ while not rl.WindowShouldClose() do
             tprint("pos    = " .. tostring(entity.pos))
             tprint("vel    = " .. tostring(entity.vel))
             tprint("accel  = " .. tostring(accel))
+        end
+    end
+
+    -- we first deal with changing position of carried entities.
+    -- an entity may carry 1+ entities which may carry 1+ entities...
+    -- this forms a tree. walk it to setup carried entities position correctly
+    function carry_entities(ids, movement)
+        for _, id in ipairs(ids) do
+            local entity = entities[id]
+            if entity.carrying ~= nil then
+                local m = entity.pos - entity.old_pos_carrying
+                carry_entities(entity.carrying, movement + m)
+                entity.carrying = {}
+                entity.old_pos_carrying = entity.pos
+            end
+            entity.pos = entity.pos + vec.v2(movement.x,
+                entity.gravity_dir == -sign(movement.y) and 0 or movement.y)
         end
     end
 
@@ -916,6 +911,7 @@ while not rl.WindowShouldClose() do
                 end
             end
         end
+        entity.old_pos = entity.pos
         return entity
     end, entities)
 
