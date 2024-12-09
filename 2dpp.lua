@@ -435,20 +435,6 @@ while not rl.WindowShouldClose() do
     tprint(tostring(rl.GetFPS()) .. " FPS")
     tprint("dt = " .. tostring(dt))
 
-    -- compute new carried entities
-    for id, entity in ipairs(entities) do
-        if entity.type == ENTITY.BOULDER or entity.type == ENTITY.PLAYER then
-            local cs = filter(function (c)
-                return c.entity_id and entities[c.entity_id].carrying ~= nil
-                and vec.eq(c.dir, vec.v2(0, entity.gravity_dir))
-            end, entity.old_collisions)
-            entity.is_root = entity.carrying ~= nil and #cs == 0
-            for _, c in ipairs(cs) do
-                table.insert(entities[c.entity_id].carrying, id)
-            end
-        end
-    end
-
     -- step all entities in this loop
     for id, entity in ipairs(entities) do
         local info = entity_info[entity.type]
@@ -521,6 +507,20 @@ while not rl.WindowShouldClose() do
         end
     end
 
+    -- compute new carried entities
+    for id, entity in ipairs(entities) do
+        if entity.type == ENTITY.BOULDER or entity.type == ENTITY.PLAYER then
+            local cs = filter(function (c)
+                return c.entity_id and entities[c.entity_id].carrying ~= nil
+                and vec.eq(c.dir, vec.v2(0, entity.gravity_dir))
+            end, entity.old_collisions)
+            entity.is_root = entity.carrying ~= nil and #cs == 0
+            for _, c in ipairs(cs) do
+                table.insert(entities[c.entity_id].carrying, id)
+            end
+        end
+    end
+
     -- we first deal with changing position of carried entities.
     -- an entity may carry 1+ entities which may carry 1+ entities...
     -- this forms a tree. walk it to setup carried entities position correctly
@@ -538,13 +538,17 @@ while not rl.WindowShouldClose() do
         end
     end
 
-    for id, entity in ipairs(entities) do
-        if entity.type == ENTITY.MOVING_PLATFORM or (entity.type == ENTITY.BOULDER and entity.is_root) then
-            carry_entities(entity.carrying, entity.pos - entity.old_pos_carrying)
-            entity.carrying = {}
-            entity.old_pos_carrying = entity.pos
+    function carry_if(fn)
+        for id, entity in ipairs(entities) do
+            if fn(entity) then
+                carry_entities(entity.carrying, entity.pos - entity.old_pos_carrying)
+                entity.carrying = {}
+                entity.old_pos_carrying = entity.pos
+            end
         end
     end
+
+    carry_if(function (e) return e.type == ENTITY.MOVING_PLATFORM end)
 
     function get_hitboxes(hitbox, from)
         return map(function (axis)
@@ -914,6 +918,8 @@ while not rl.WindowShouldClose() do
         entity.old_pos = entity.pos
         return entity
     end, entities)
+
+    carry_if(function (e) return e.type == ENTITY.BOULDER and e.is_root end)
 
     camera.target = entities[1].pos
 
